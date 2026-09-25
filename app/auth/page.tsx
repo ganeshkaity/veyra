@@ -440,7 +440,7 @@ function AuthContent() {
         <button
           onClick={toggleTheme}
           aria-label="Toggle theme"
-          className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
+          className="p-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size="sm" />
         </button>
@@ -450,12 +450,12 @@ function AuthContent() {
       <div className="w-full max-w-md mx-auto bg-white/90 dark:bg-slate-900/90 rounded-3xl p-6 md:p-8 shadow-xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xl transition-all">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md flex items-center justify-center mb-3">
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-3 dark:bg-slate-500" >
             <Image
               src="/assets/main_logo.png"
               alt="Veyra"
-              width={64}
-              height={64}
+              width={80}
+              height={80}
               priority
               className="object-contain"
             />

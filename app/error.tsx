@@ -46,15 +46,15 @@ export default function GlobalErrorPage({
           className="flex items-center gap-2.5 group transition-transform active:scale-95"
         >
           <div className="w-10 h-10 flex items-center justify-center transition-colors">
-                      <Image
-                        src="/assets/favicon.png"
-                        alt={BRAND.name}
-                        width={28}
-                        height={28}
-                        className="object-contain"
-                        priority
-                      />
-                    </div>
+            <Image
+              src="/assets/favicon.png"
+              alt={BRAND.name}
+              width={28}
+              height={28}
+              className="object-contain"
+              priority
+            />
+          </div>
           <div>
             <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-[#2563EB] to-[#14B8A6] bg-clip-text text-transparent">
               {BRAND.name}
@@ -70,14 +70,13 @@ export default function GlobalErrorPage({
             type="button"
             onClick={toggleTheme}
             aria-label="Toggle Theme"
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all text-xs font-medium cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-slate-700 transition-all text-xs font-medium cursor-pointer"
           >
             <Icon
               name={theme === "dark" ? "light_mode" : "dark_mode"}
-              size="xs"
-              className={theme === "dark" ? "text-amber-400" : "text-[#2563EB]"}
+              size="sm"
+              className={theme === "dark" ? "text-[#14B8A6]" : "text-[#2563EB]"}
             />
-            <span className="capitalize">{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
           </button>
         )}
       </header>

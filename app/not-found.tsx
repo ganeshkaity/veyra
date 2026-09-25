@@ -75,14 +75,13 @@ export default function NotFound() {
             type="button"
             onClick={toggleTheme}
             aria-label="Toggle Theme"
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all text-xs font-medium cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-slate-700 transition-all text-xs font-medium cursor-pointer"
           >
             <Icon
               name={theme === "dark" ? "light_mode" : "dark_mode"}
-              size="xs"
-              className={theme === "dark" ? "text-amber-400" : "text-[#2563EB]"}
+              size="sm"
+              className={theme === "dark" ? "text-[#14B8A6]" : "text-[#2563EB]"}
             />
-            <span className="capitalize">{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
           </button>
         )}
       </header>
@@ -110,11 +109,7 @@ export default function NotFound() {
           </div>
         </div>
 
-        {/* Minimalist 404 Status Pill */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 text-[#2563EB] dark:text-[#60A5FA] text-xs font-semibold tracking-wide uppercase mb-3">
-          <span className="w-2 h-2 rounded-full bg-[#2563EB] dark:bg-[#60A5FA] animate-pulse" />
-          Error 404 • Page Not Found
-        </div>
+        
 
         {/* Big Stylized Numeric 404 */}
         <h1 className="text-7xl sm:text-8xl font-black tracking-tight leading-none text-transparent bg-clip-text bg-gradient-to-r from-[#2563EB] via-indigo-500 to-[#14B8A6] mb-3 select-none drop-shadow-xs">

@@ -43,24 +43,15 @@ export default function SplashPage() {
       {/* Header bar with Theme Toggle */}
       <header className="w-full max-w-5xl flex items-center justify-between py-4 z-10">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl overflow-hidden shadow-sm flex items-center justify-center">
-            <Image
-              src="/assets/main_logo.png"
-              alt="Veyra"
-              width={36}
-              height={36}
-              className="object-contain"
-            />
-          </div>
           <span className="font-bold text-lg tracking-tight text-slate-900 dark:text-slate-100">
-            Veyra
+            Veyra Chat
           </span>
         </div>
 
         <button
           onClick={toggleTheme}
           aria-label="Toggle theme"
-          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
+          className="p-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 "
         >
           <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size="sm" />
         </button>
@@ -74,9 +65,9 @@ export default function SplashPage() {
         {/* Animated Brand Logo Container */}
         <div className="relative mb-8 group">
           <div className="absolute -inset-4 bg-gradient-to-r from-[#2563EB] to-[#14B8A6] rounded-3xl opacity-20 blur-xl group-hover:opacity-30 transition duration-500" />
-          <div className="relative w-36 h-36 md:w-44 md:h-44 p-4 rounded-3xl bg-white/90 dark:bg-slate-900/90 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xl flex items-center justify-center transform transition duration-500 hover:scale-105">
+          <div className="relative w-36 h-36 md:w-44 md:h-44 p-4 rounded-3xl shadow-2xl backdrop-blur-xl flex items-center justify-center transform transition duration-500 hover:scale-105">
             <Image
-              src="/assets/main_logo.png"
+              src="/assets/favicon.png"
               alt="Veyra Brand Logo"
               width={160}
               height={160}
@@ -88,7 +79,7 @@ export default function SplashPage() {
 
         {/* Title and Tagline */}
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-3">
-          Veyra
+          Veyra Chat
         </h1>
         <p className="text-lg md:text-xl font-medium text-transparent bg-clip-text bg-gradient-to-r from-[#2563EB] to-[#14B8A6] mb-6">
           "Har Baat, Apno Ke Saath."

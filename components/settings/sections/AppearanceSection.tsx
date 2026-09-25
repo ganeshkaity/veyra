@@ -57,10 +57,10 @@ export const AppearanceSection: React.FC<AppearanceSectionProps> = ({ onBack }) 
               </div>
               <div className="space-y-1.5 py-1">
                 <div className="w-20 h-4 rounded-lg bg-white border border-slate-200 shadow-xs text-[8px] flex items-center px-1.5 text-slate-600">
-                  Hello! 👋
+                 
                 </div>
                 <div className="w-24 h-4 rounded-lg bg-[#2563EB] text-white shadow-xs text-[8px] flex items-center px-1.5 ml-auto">
-                  Har Baat, Apno Ke Saath
+                  
                 </div>
               </div>
               <div className="w-full h-4 rounded-md bg-white border border-slate-200" />
@@ -98,10 +98,10 @@ export const AppearanceSection: React.FC<AppearanceSectionProps> = ({ onBack }) 
               </div>
               <div className="space-y-1.5 py-1">
                 <div className="w-20 h-4 rounded-lg bg-slate-800 text-[8px] flex items-center px-1.5 text-slate-300">
-                  Hello! 👋
+                  
                 </div>
                 <div className="w-24 h-4 rounded-lg bg-[#14B8A6] text-white text-[8px] flex items-center px-1.5 ml-auto">
-                  Har Baat, Apno Ke Saath
+                  
                 </div>
               </div>
               <div className="w-full h-4 rounded-md bg-slate-800/80 border border-slate-700" />
@@ -120,19 +120,6 @@ export const AppearanceSection: React.FC<AppearanceSectionProps> = ({ onBack }) 
               </div>
             </div>
           </button>
-        </div>
-
-        {/* Brand Accent Palette Note */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 space-y-2">
-          <h5 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Veyra Brand Colors
-          </h5>
-          <div className="flex items-center gap-2 pt-1">
-            <div className="w-6 h-6 rounded-lg bg-[#2563EB] shadow-xs" title="Primary Blue" />
-            <div className="w-6 h-6 rounded-lg bg-[#14B8A6] shadow-xs" title="Primary Teal" />
-            <div className="w-6 h-6 rounded-lg bg-[#0F172A] shadow-xs" title="Deep Navy" />
-            <div className="w-6 h-6 rounded-lg bg-[#F8FAFC] border border-slate-200 shadow-xs" title="Light Background" />
-          </div>
         </div>
       </div>
     </div>
