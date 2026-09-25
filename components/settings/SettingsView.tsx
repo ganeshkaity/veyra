@@ -25,15 +25,25 @@ import { ProfileSection } from "./sections/ProfileSection";
 interface SettingsViewProps {
   currentUser: UserProfile;
   initialSection?: string | null;
+  onNavigate?: (path: string) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   currentUser,
   initialSection = null,
+  onNavigate,
 }) => {
   const { logout } = useAuth();
   const { theme } = useTheme();
   const [activeSection, setActiveSection] = useState<string | null>(initialSection);
+
+  const handleSelectSection = (section: string, routePath: string) => {
+    if (onNavigate) {
+      onNavigate(routePath);
+    } else {
+      setActiveSection(section);
+    }
+  };
 
   // Render Subpages
   if (activeSection === "profile") {
@@ -96,7 +106,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* User Profile Card (Top Header Card matching reference UI) */}
         <button
           type="button"
-          onClick={() => setActiveSection("profile")}
+          onClick={() => handleSelectSection("profile", "/setting/profile-setting")}
           className="w-full flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all text-left group"
         >
           <div className="flex items-center gap-3.5 min-w-0">
@@ -125,7 +135,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Account */}
           <button
             type="button"
-            onClick={() => setActiveSection("account")}
+            onClick={() => handleSelectSection("account", "/setting/account")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -147,7 +157,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Privacy */}
           <button
             type="button"
-            onClick={() => setActiveSection("privacy")}
+            onClick={() => handleSelectSection("privacy", "/setting/privacy")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -169,7 +179,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Security */}
           <button
             type="button"
-            onClick={() => setActiveSection("security")}
+            onClick={() => handleSelectSection("security", "/setting/security")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -191,7 +201,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Two-Step Verification */}
           <button
             type="button"
-            onClick={() => setActiveSection("twostep")}
+            onClick={() => handleSelectSection("twostep", "/setting/two-step-verification")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -227,7 +237,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Chats */}
           <button
             type="button"
-            onClick={() => setActiveSection("chats")}
+            onClick={() => handleSelectSection("chats", "/setting/chats")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -249,7 +259,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Appearance */}
           <button
             type="button"
-            onClick={() => setActiveSection("appearance")}
+            onClick={() => handleSelectSection("appearance", "/setting/appearance")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -276,7 +286,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Notifications */}
           <button
             type="button"
-            onClick={() => setActiveSection("notifications")}
+            onClick={() => handleSelectSection("notifications", "/setting/notification")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -303,7 +313,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Data and Storage Usage */}
           <button
             type="button"
-            onClick={() => setActiveSection("storage")}
+            onClick={() => handleSelectSection("storage", "/setting/data-and-storage-usage")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -328,7 +338,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Help */}
           <button
             type="button"
-            onClick={() => setActiveSection("help")}
+            onClick={() => handleSelectSection("help", "/setting/help")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -350,7 +360,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* About */}
           <button
             type="button"
-            onClick={() => setActiveSection("about")}
+            onClick={() => handleSelectSection("about", "/setting/about")}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">

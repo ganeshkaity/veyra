@@ -154,7 +154,7 @@ export const AttachmentMenuPopover: React.FC<AttachmentMenuPopoverProps> = ({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-full mb-3 left-2 sm:left-4 z-40 w-72 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#0F172A] rounded-2xl shadow-2xl border border-slate-200/90 dark:border-slate-800/90 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150"
+      className="absolute bottom-full mb-3 right-3 sm:right-14 z-40 w-72 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#0F172A] rounded-2xl shadow-2xl border border-slate-200/90 dark:border-slate-800/90 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150"
       style={{
         boxShadow:
           "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",

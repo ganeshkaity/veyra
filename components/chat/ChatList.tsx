@@ -236,14 +236,54 @@ export const ChatList: React.FC<ChatListProps> = ({
     return Boolean(group && group.hasUnviewed && group.statuses.length > 0);
   };
 
+  // Story Viewer client-side history navigation
+  const handleOpenStoryViewer = (statuses: StatusItem[]) => {
+    setActiveStoryStatuses(statuses);
+    if (typeof window !== "undefined") {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("story", "view");
+      window.history.pushState({ storyViewer: true }, "", currentUrl.toString());
+    }
+  };
+
+  const handleCloseStoryViewer = () => {
+    setActiveStoryStatuses(null);
+    if (typeof window !== "undefined") {
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.has("story")) {
+        currentUrl.searchParams.delete("story");
+        window.history.replaceState({ storyViewer: null }, "", currentUrl.toString());
+      }
+    }
+  };
+
+  const handleStoryModalClose = () => {
+    if (typeof window !== "undefined" && window.location.search.includes("story=")) {
+      window.history.back();
+    } else {
+      handleCloseStoryViewer();
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has("story")) {
+        setActiveStoryStatuses(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   // Avatar click handler: opens user's story if unviewed, else opens WhatsApp-style profile preview modal
   const handleAvatarClick = (conv: Conversation, name: string, avatarUrl: string) => {
     if (conv.type === "direct") {
       const otherId = conv.participantIds.find((id) => id !== currentUser.uid);
       const group = otherId ? statusGroups.find((g) => g.userId === otherId) : null;
       if (group && group.hasUnviewed && group.statuses.length > 0) {
-        // Open the user's unviewed story!
-        setActiveStoryStatuses(group.statuses);
+        // Open the user's unviewed story with browser history handling
+        handleOpenStoryViewer(group.statuses);
         return;
       }
     }
@@ -923,7 +963,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       {activeStoryStatuses && (
         <StatusViewerModal
           isOpen={Boolean(activeStoryStatuses)}
-          onClose={() => setActiveStoryStatuses(null)}
+          onClose={handleStoryModalClose}
           statuses={activeStoryStatuses}
           currentUser={currentUser}
         />

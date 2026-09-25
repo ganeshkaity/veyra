@@ -486,7 +486,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
             onScroll={handleScroll}
             className="flex-1 overflow-y-auto p-4 space-y-1 scroll-smooth"
           >
-            <div className="min-h-full flex flex-col justify-end">
+            <div className="min-h-full flex flex-col justify-start">
             {/* Older messages loading skeleton indicator */}
             {isLoadingOlder && (
               <div className="flex items-center justify-center py-3 select-none">
@@ -592,40 +592,38 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
             </button>
           </div>
         )}
-      </UniversalChatWallpaper>
-
-        
 
         {/* Input Bar */}
         <MessageInputBar
-          onSendMessage={handleSendMessage}
-          onTyping={(isTyping) =>
-            setTypingStatus(
-              conversation.id,
-              currentUser.uid,
-              currentUser.username,
-              currentUser.displayName,
-              isTyping
-            )
-          }
-          onOpenMediaModal={(file) => {
-            setMediaFileToUpload(file || null);
-            setComingSoonInfo(null);
-            setIsMediaModalOpen(true);
-          }}
-          onOpenGifModal={() => setIsGifModalOpen(true)}
-          onOpenStickerModal={() => setIsStickerModalOpen(true)}
-          onSendGif={handleSendGif}
-          onSendSticker={handleSendSticker}
-          onComingSoon={(title, description, icon) => {
-            setMediaFileToUpload(null);
-            setComingSoonInfo({ title, description, icon });
-            setIsMediaModalOpen(true);
-          }}
-          replyingTo={replyingTo}
-          onCancelReply={() => setReplyingTo(null)}
-          isAiConversation={conversation.type === "ai"}
-        />
+            onSendMessage={handleSendMessage}
+            onTyping={(isTyping) =>
+              setTypingStatus(
+                conversation.id,
+                currentUser.uid,
+                currentUser.username,
+                currentUser.displayName,
+                isTyping
+              )
+            }
+            onOpenMediaModal={(file) => {
+              setMediaFileToUpload(file || null);
+              setComingSoonInfo(null);
+              setIsMediaModalOpen(true);
+            }}
+            onOpenGifModal={() => setIsGifModalOpen(true)}
+            onOpenStickerModal={() => setIsStickerModalOpen(true)}
+            onSendGif={handleSendGif}
+            onSendSticker={handleSendSticker}
+            onComingSoon={(title, description, icon) => {
+              setMediaFileToUpload(null);
+              setComingSoonInfo({ title, description, icon });
+              setIsMediaModalOpen(true);
+            }}
+            replyingTo={replyingTo}
+            onCancelReply={() => setReplyingTo(null)}
+            isAiConversation={conversation.type === "ai"}
+          />
+        </UniversalChatWallpaper>
 
         {/* Modals */}
         <MediaAttachmentModal

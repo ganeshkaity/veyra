@@ -194,28 +194,49 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           e.stopPropagation();
           onAvatarClick?.(conversation, name, avatarUrl);
         }}
-        className={`relative flex-shrink-0 cursor-pointer rounded-full transition-all hover:scale-105 active:scale-95 ${
-          hasUnviewedStory
-            ? "p-[2.5px] rounded-full ring-2 ring-sky-400 dark:ring-sky-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-sm"
-            : ""
-        }`}
+        className="relative flex-shrink-0 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center justify-center"
         title={hasUnviewedStory ? `View ${name}'s story` : `View ${name}'s profile photo`}
       >
-        {isGroup ? (
-          avatarUrl ? (
-            <Avatar name={name} src={avatarUrl} size="md" />
-          ) : (
-            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-sm">
-              <Icon name="groups" size="sm" />
+        {hasUnviewedStory ? (
+          <div className="w-[50px] h-[50px] rounded-full p-[2px] bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] dark:from-sky-400 dark:to-teal-400 flex items-center justify-center flex-shrink-0 shadow-xs">
+            <div className="w-full h-full rounded-full p-[1.5px] bg-white dark:bg-slate-900 flex items-center justify-center">
+              {isGroup ? (
+                avatarUrl ? (
+                  <Avatar name={name} src={avatarUrl} size="md" />
+                ) : (
+                  <div className="w-full h-full rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-sm">
+                    <Icon name="groups" size="sm" />
+                  </div>
+                )
+              ) : (
+                <Avatar
+                  name={name}
+                  src={avatarUrl}
+                  size="md"
+                  isOnline={isAi ? undefined : isOnline}
+                />
+              )}
             </div>
-          )
+          </div>
         ) : (
-          <Avatar
-            name={name}
-            src={avatarUrl}
-            size="md"
-            isOnline={isAi ? undefined : isOnline}
-          />
+          <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0">
+            {isGroup ? (
+              avatarUrl ? (
+                <Avatar name={name} src={avatarUrl} size="md" />
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-sm">
+                  <Icon name="groups" size="sm" />
+                </div>
+              )
+            ) : (
+              <Avatar
+                name={name}
+                src={avatarUrl}
+                size="md"
+                isOnline={isAi ? undefined : isOnline}
+              />
+            )}
+          </div>
         )}
 
         {isAi && (

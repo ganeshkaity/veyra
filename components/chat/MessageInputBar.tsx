@@ -156,7 +156,7 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
   return (
     <div
       ref={composerContainerRef}
-      className="relative bg-white dark:bg-[#0F172A] border-t border-slate-200/80 dark:border-slate-800/90 z-20 pb-[max(0.25rem,env(safe-area-inset-bottom))]"
+      className="relative z-20 w-full bg-transparent sm:bg-white/95 sm:dark:bg-[#0F172A]/95 sm:backdrop-blur-md sm:border-t sm:border-slate-200/80 sm:dark:border-slate-800/90 transition-colors pb-[max(0.25rem,env(safe-area-inset-bottom))]"
     >
       {/* Hidden file input for image picking */}
       <input
@@ -216,13 +216,13 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
 
       {/* Reply Snippet Banner */}
       {replyingTo && (
-        <div className="mx-3 mt-2 mb-0 p-2.5 px-3.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/90 border-l-[3.5px] border-[#2563EB] dark:border-[#14B8A6] border border-slate-200/60 dark:border-slate-700/60 shadow-xs flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2 duration-150">
+        <div className="mx-2 sm:mx-3 mb-1.5 p-2.5 px-3.5 rounded-2xl bg-white/95 dark:bg-[#1F2C34]/95 border-l-[3.5px] border-[#00A884] border border-slate-200/60 dark:border-white/10 shadow-lg flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2 duration-150 backdrop-blur-md">
           <div className="flex items-center gap-2.5 overflow-hidden text-xs min-w-0">
-            <div className="w-6 h-6 rounded-full bg-[#2563EB]/10 dark:bg-[#14B8A6]/15 flex items-center justify-center text-[#2563EB] dark:text-[#14B8A6] flex-shrink-0">
+            <div className="w-6 h-6 rounded-full bg-[#00A884]/15 flex items-center justify-center text-[#00A884] flex-shrink-0">
               <Icon name="reply" size="xs" />
             </div>
             <div className="truncate min-w-0">
-              <span className="font-semibold text-[#2563EB] dark:text-[#14B8A6] block text-[11px] truncate">
+              <span className="font-semibold text-[#00A884] block text-[11px] truncate">
                 Replying to {replyingTo.senderName}
               </span>
               <p className="text-slate-600 dark:text-slate-300 truncate text-xs mt-0.5">
@@ -249,52 +249,38 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
       )}
 
       {/* Main Composer Controls Row */}
-      <div className="flex items-end gap-1.5 px-2.5 sm:px-3 py-2">
-        {/* Attachment Menu (+) Button */}
-        {!isAiConversation && (
+      <div className="flex items-end gap-2 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 sm:px-3 sm:py-2">
+        {/* Left Pill (Capsule) Container */}
+        <div className="flex-1 relative flex items-center min-h-[48px] bg-white dark:bg-[#1F2C34] rounded-[24px] sm:rounded-2xl px-1 sm:px-1.5 py-0.5 shadow-sm border border-slate-200/50 dark:border-white/5 transition-all focus-within:ring-1 focus-within:ring-[#00A884]/40">
+          {/* Emoji / Sticker Button (Left Inside Pill) */}
           <button
             type="button"
             onClick={() => {
-              setIsAttachmentOpen(!isAttachmentOpen);
-              if (isExpressionsOpen) setIsExpressionsOpen(false);
+              if (isExpressionsOpen) {
+                setIsExpressionsOpen(false);
+              } else {
+                setExpressionsTab("emoji");
+                setIsExpressionsOpen(true);
+                if (isAttachmentOpen) setIsAttachmentOpen(false);
+              }
             }}
-            title="Attach media or files"
-            aria-label="Attach media or files"
-            className={`p-2.5 rounded-xl transition-all flex-shrink-0 mb-0.5 active:scale-95 ${
-              isAttachmentOpen
-                ? "bg-[#2563EB]/15 dark:bg-[#14B8A6]/20 text-[#2563EB] dark:text-[#14B8A6]"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#2563EB] dark:hover:text-[#14B8A6]"
-            }`}
+            title="Emojis, GIFs & Stickers"
+            aria-label="Choose emoji, GIF or sticker"
+            className="w-10 h-10 flex items-center justify-center text-slate-400 dark:text-[#8696A0] hover:text-[#00A884] dark:hover:text-white transition-colors active:scale-90 flex-shrink-0 cursor-pointer"
           >
-            <Icon name={isAttachmentOpen ? "close" : "add"} size="md" />
+            {/* WhatsApp style sticker / emoji smiley icon */}
+            <svg
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="currentColor"
+              className="text-slate-400 dark:text-[#8696A0]"
+            >
+              <path d="M12 2C6.48 2 2 6.48 2 12c0 2.3.8 4.4 2.1 6.1L4.1 21l2.9-1c1.5 1.3 3.4 2 5 2 5.52 0 10-4.48 10-10S17.52 2 12 2zm-1 15c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5zm-2.5-6c-.83 0-1.5-.67-1.5-1.5S7.67 8 8.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5 0c-.83 0-1.5-.67-1.5-1.5S12.67 8 13.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+            </svg>
           </button>
-        )}
 
-        {/* Single Unified Expressions Button (Emoji / GIF / Sticker Modal) */}
-        <button
-          type="button"
-          onClick={() => {
-            if (isExpressionsOpen) {
-              setIsExpressionsOpen(false);
-            } else {
-              setExpressionsTab("emoji");
-              setIsExpressionsOpen(true);
-              if (isAttachmentOpen) setIsAttachmentOpen(false);
-            }
-          }}
-          title="Emojis, GIFs & Stickers"
-          aria-label="Choose emoji, GIF or sticker"
-          className={`p-2.5 rounded-xl transition-all flex-shrink-0 mb-0.5 active:scale-95 ${
-            isExpressionsOpen
-              ? "bg-[#2563EB]/15 dark:bg-[#14B8A6]/20 text-[#2563EB] dark:text-[#14B8A6]"
-              : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#2563EB] dark:hover:text-[#14B8A6]"
-          }`}
-        >
-          <Icon name="mood" size="md" />
-        </button>
-
-        {/* Text Input Container with Auto-Resize Multiline Textarea */}
-        <div className="flex-1 relative flex items-center min-w-0 bg-slate-100/90 dark:bg-slate-800/90 rounded-2xl border border-transparent focus-within:border-[#2563EB]/40 dark:focus-within:border-[#14B8A6]/40 focus-within:ring-2 focus-within:ring-[#2563EB]/15 dark:focus-within:ring-[#14B8A6]/15 transition-all">
+          {/* Multiline Auto-Resize Textarea with "Message" Placeholder */}
           <textarea
             ref={textareaRef}
             rows={1}
@@ -307,44 +293,64 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
               setIsAttachmentOpen(false);
             }}
             placeholder={
-              isAiConversation ? "Ask Veyra AI anything..." : "Type a message..."
+              isAiConversation ? "Ask Veyra AI..." : "Message"
             }
             autoCapitalize="sentences"
             autoComplete="off"
             spellCheck={true}
-            className="w-full bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-sm px-3.5 sm:px-4 py-2.5 border-none outline-none resize-none max-h-32 scrollbar-none leading-relaxed"
+            className="flex-1 bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-[#8696A0] text-[16px] sm:text-sm px-1.5 py-2.5 border-none outline-none resize-none max-h-32 scrollbar-none leading-relaxed"
           />
+
+          {/* Attachment Paperclip Button (Right Inside Pill) */}
+          {!isAiConversation && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsAttachmentOpen(!isAttachmentOpen);
+                if (isExpressionsOpen) setIsExpressionsOpen(false);
+              }}
+              title="Attach media or files"
+              aria-label="Attach media or files"
+              className="w-10 h-10 flex items-center justify-center text-slate-400 dark:text-[#8696A0] hover:text-[#00A884] dark:hover:text-white transition-colors active:scale-90 flex-shrink-0 cursor-pointer"
+            >
+              {/* WhatsApp paperclip icon */}
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="rotate-[135deg]"
+              >
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* Action Button: Send vs Coming Soon Mic */}
-        {text.trim() ? (
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={isSending}
-            title="Send message (Enter)"
-            aria-label="Send message"
-            className="p-2.5 rounded-full bg-gradient-to-r from-[#2563EB] to-[#14B8A6] text-white shadow-md shadow-blue-500/25 hover:opacity-95 active:scale-95 transition-all flex items-center justify-center flex-shrink-0 mb-0.5"
+        {/* Standalone Circular Send Button */}
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={isSending}
+          title="Send message"
+          aria-label="Send message"
+          className="w-12 h-12 rounded-full bg-[#00A884] hover:bg-[#008f70] active:scale-95 transition-all flex items-center justify-center flex-shrink-0 shadow-md cursor-pointer mb-0.5"
+        >
+          {/* Dark directional send arrowhead matching reference */}
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="currentColor"
+            className="text-[#0B141A] ml-0.5"
           >
-            <Icon name="send" size="sm" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() =>
-              handleComingSoon(
-                "Voice Messaging",
-                "Voice notes, waveforms, and audio recordings are coming soon in Veyra V2.",
-                "mic"
-              )
-            }
-            title="Voice message (Coming Soon)"
-            aria-label="Voice message"
-            className="p-2.5 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex-shrink-0 mb-0.5 active:scale-95"
-          >
-            <Icon name="mic" size="sm" />
-          </button>
-        )}
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+          </svg>
+        </button>
       </div>
     </div>
   );

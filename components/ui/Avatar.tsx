@@ -60,15 +60,17 @@ export const Avatar: React.FC<AvatarProps> = ({
   };
 
   return (
-    <div className={`relative inline-flex flex-shrink-0 ${className}`}>
+    <div
+      className={`relative flex items-center justify-center flex-shrink-0 aspect-square rounded-full ${sizeClasses[size]} ${className}`}
+    >
       <div
-        className={`${sizeClasses[size]} rounded-full overflow-hidden flex items-center justify-center font-semibold text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10`}
+        className="w-full h-full rounded-full overflow-hidden flex items-center justify-center font-semibold text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10"
       >
         {src ? (
           <img
             src={src}
             alt={name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover rounded-full select-none"
             onError={(e) => {
               // Hide broken image and fallback to initials
               (e.target as HTMLElement).style.display = "none";
@@ -76,9 +78,9 @@ export const Avatar: React.FC<AvatarProps> = ({
           />
         ) : (
           <div
-            className={`w-full h-full flex items-center justify-center bg-gradient-to-tr ${getGradient(
+            className={`w-full h-full rounded-full flex items-center justify-center bg-gradient-to-tr ${getGradient(
               name
-            )}`}
+            )} select-none`}
           >
             {getInitials(name)}
           </div>

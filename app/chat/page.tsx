@@ -76,11 +76,110 @@ export default function ChatPage() {
     return () => unsub();
   }, [user]);
 
+  // Open / Select conversation with client-side history navigation
+  const handleSelectConversation = (id: string | null) => {
+    if (!id) {
+      handleCloseConversation();
+      return;
+    }
+
+    if (id === selectedConversationId) return;
+
+    setSelectedConversationId(id);
+
+    if (typeof window !== "undefined") {
+      const url = `/chat?chat=${encodeURIComponent(id)}`;
+      const params = new URLSearchParams(window.location.search);
+      const currentlyHasChat =
+        params.has("chat") || params.has("id") || params.has("ai");
+
+      // When opening a chat from the chat list, add a browser history entry so Back returns to chat list.
+      // If switching directly between open chats (e.g. desktop), replace state so Back still returns to chat list.
+      if (!currentlyHasChat && !selectedConversationId) {
+        window.history.pushState({ chatId: id }, "", url);
+      } else {
+        window.history.replaceState({ chatId: id }, "", url);
+      }
+    }
+  };
+
+  // Close active conversation and reset URL
+  const handleCloseConversation = () => {
+    setSelectedConversationId(null);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("chat") || params.has("id") || params.has("ai")) {
+        window.history.replaceState({ chatId: null }, "", "/chat");
+      }
+    }
+  };
+
+  // Mobile Back button: pop browser history if entry was pushed, else close chat
+  const handleBackMobile = () => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("chat") || params.has("id") || params.has("ai")) {
+        window.history.back();
+        return;
+      }
+    }
+    handleCloseConversation();
+  };
+
+  // Handle browser & Android Back / Forward navigation (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const chatIdFromUrl = params.get("chat") || params.get("id");
+      const isAi = params.get("ai") === "true";
+
+      if (chatIdFromUrl) {
+        setSelectedConversationId(chatIdFromUrl);
+      } else if (isAi) {
+        setSelectedConversationId(VEYRA_AI_CONVERSATION_ID);
+      } else {
+        // Back pressed while viewing chat: close chat & return to chat list
+        setSelectedConversationId(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Parse initial chat query param on mount and set up history stack
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const initialChatId = params.get("chat") || params.get("id");
+    const isAi = params.get("ai") === "true";
+
+    if (initialChatId) {
+      setSelectedConversationId(initialChatId);
+      // To ensure pressing Back once returns to chat list even on direct link or reload:
+      window.history.replaceState({ chatId: null }, "", "/chat");
+      window.history.pushState(
+        { chatId: initialChatId },
+        "",
+        `/chat?chat=${encodeURIComponent(initialChatId)}`
+      );
+    } else if (isAi) {
+      setSelectedConversationId(VEYRA_AI_CONVERSATION_ID);
+      window.history.replaceState({ chatId: null }, "", "/chat");
+      window.history.pushState(
+        { chatId: VEYRA_AI_CONVERSATION_ID },
+        "",
+        "/chat?chat=ai_veyra"
+      );
+    }
+  }, []);
+
   // Open Veyra AI companion conversation
   const handleOpenAi = () => {
     if (!user) return;
     setActiveTab("chats");
-    setSelectedConversationId(VEYRA_AI_CONVERSATION_ID);
+    handleSelectConversation(VEYRA_AI_CONVERSATION_ID);
   };
 
   // Track selected conversation with immediate fallback for newly opened direct chats
@@ -143,10 +242,16 @@ export default function ChatPage() {
       <DesktopSidebarNav
         activeTab={activeTab}
         onTabChange={(tab) => {
-          setActiveTab(tab);
-          // When switching tabs on desktop, clear selected conversation if moving away from chats
-          if (tab !== "chats") {
-            setSelectedConversationId(null);
+          if (tab === "chats") {
+            setActiveTab("chats");
+          } else if (tab === "status") {
+            router.push("/status");
+          } else if (tab === "groups") {
+            router.push("/groups");
+          } else if (tab === "you") {
+            router.push("/profile");
+          } else if (tab === "settings") {
+            router.push("/setting");
           }
         }}
         onOpenAi={handleOpenAi}
@@ -167,7 +272,7 @@ export default function ChatPage() {
                 conversations={conversations}
                 currentUser={profile}
                 selectedConversationId={selectedConversationId}
-                onSelectConversation={(id) => setSelectedConversationId(id)}
+                onSelectConversation={(id) => handleSelectConversation(id)}
                 onNewChat={() => setIsNewChatModalOpen(true)}
                 onNewGroup={() => setIsNewGroupModalOpen(true)}
                 isLoading={isLoadingConversations}
@@ -186,7 +291,7 @@ export default function ChatPage() {
                 <ConversationView
                   conversation={currentConversation}
                   currentUser={profile}
-                  onBackMobile={() => setSelectedConversationId(null)}
+                  onBackMobile={handleBackMobile}
                 />
               ) : (
                 /* Desktop Welcome Empty State */
@@ -253,7 +358,7 @@ export default function ChatPage() {
             conversations={conversations}
             onSelectGroupConversation={(groupId) => {
               setActiveTab("chats");
-              setSelectedConversationId(groupId);
+              handleSelectConversation(groupId);
             }}
           />
         )}
@@ -270,8 +375,17 @@ export default function ChatPage() {
         <MobileBottomNav
           activeTab={activeTab}
           onTabChange={(tab) => {
-            setActiveTab(tab);
-            setSelectedConversationId(null);
+            if (tab === "chats") {
+              setActiveTab("chats");
+            } else if (tab === "status") {
+              router.push("/status");
+            } else if (tab === "groups") {
+              router.push("/groups");
+            } else if (tab === "you") {
+              router.push("/profile");
+            } else if (tab === "settings") {
+              router.push("/setting");
+            }
           }}
         />
       )}
@@ -282,7 +396,7 @@ export default function ChatPage() {
         onClose={() => setIsNewChatModalOpen(false)}
         currentUser={profile}
         onConversationCreated={(convId) => {
-          setSelectedConversationId(convId);
+          handleSelectConversation(convId);
         }}
         onOpenNewGroup={() => setIsNewGroupModalOpen(true)}
       />
@@ -294,7 +408,7 @@ export default function ChatPage() {
         currentUser={profile}
         conversations={conversations}
         onGroupCreated={(groupId) => {
-          setSelectedConversationId(groupId);
+          handleSelectConversation(groupId);
         }}
       />
     </div>

@@ -65,6 +65,10 @@ html, body {
   touch-action: manipulation;
 }
 
+nextjs-portal {
+  display: none !important;
+}
+
 /* Safe-area padding utilities */
 .pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
@@ -199,6 +203,19 @@ html, body {
 
 .animate-float-subtle {
   animation: float-subtle 3.5s ease-in-out infinite;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 18s linear infinite;
 }
 
 /* Reduced motion preference */

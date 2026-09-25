@@ -169,7 +169,13 @@ export const AccountSection: React.FC<AccountSectionProps> = ({
           {/* Change Phone Number */}
           <button
             type="button"
-            onClick={() => setShowEditPhoneModal(true)}
+            onClick={() => {
+              if (onNavigateToSection) {
+                onNavigateToSection("changenumber");
+              } else {
+                setShowEditPhoneModal(true);
+              }
+            }}
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">

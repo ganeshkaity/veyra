@@ -29,6 +29,94 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
   // Active status story player state
   const [viewingStatuses, setViewingStatuses] = useState<StatusItem[] | null>(null);
 
+  // Open status story player with zero reload & browser history entry
+  const handleOpenStatusViewer = (statuses: StatusItem[], viewKey: string = "my") => {
+    setViewingStatuses(statuses);
+
+    if (typeof window !== "undefined") {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("view", viewKey);
+      const hasViewParam = window.location.search.includes("view=");
+
+      if (!hasViewParam && !viewingStatuses) {
+        window.history.pushState({ statusViewer: viewKey }, "", currentUrl.toString());
+      } else {
+        window.history.replaceState({ statusViewer: viewKey }, "", currentUrl.toString());
+      }
+    }
+  };
+
+  // Close status story player and clean up URL
+  const handleCloseStatusViewer = () => {
+    setViewingStatuses(null);
+
+    if (typeof window !== "undefined") {
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.has("view")) {
+        currentUrl.searchParams.delete("view");
+        window.history.replaceState({ statusViewer: null }, "", currentUrl.toString());
+      }
+    }
+  };
+
+  // Modal close handler: triggers history back if history entry exists
+  const handleModalClose = () => {
+    if (typeof window !== "undefined" && window.location.search.includes("view=")) {
+      window.history.back();
+    } else {
+      handleCloseStatusViewer();
+    }
+  };
+
+  // Listen for browser / Android Back button
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get("view");
+
+      if (viewParam) {
+        if (viewParam === "my") {
+          if (myStatuses.length > 0) setViewingStatuses(myStatuses);
+        } else {
+          const group = otherGroups.find((g) => g.userId === viewParam);
+          if (group) setViewingStatuses(group.statuses);
+        }
+      } else {
+        // Back pressed while viewing status: close story viewer, stay on status page!
+        setViewingStatuses(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [myStatuses, otherGroups]);
+
+  // Check for initial ?view= query param on mount
+  useEffect(() => {
+    if (typeof window === "undefined" || isLoading) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get("view");
+    if (!viewParam || viewingStatuses) return;
+
+    if (viewParam === "my" && myStatuses.length > 0) {
+      setViewingStatuses(myStatuses);
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("view");
+      window.history.replaceState({ statusViewer: null }, "", cleanUrl.toString());
+      window.history.pushState({ statusViewer: "my" }, "", window.location.href);
+    } else if (viewParam !== "my") {
+      const group = otherGroups.find((g) => g.userId === viewParam);
+      if (group) {
+        setViewingStatuses(group.statuses);
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("view");
+        window.history.replaceState({ statusViewer: null }, "", cleanUrl.toString());
+        window.history.pushState({ statusViewer: viewParam }, "", window.location.href);
+      }
+    }
+  }, [isLoading, myStatuses, otherGroups]);
+
   // Viewed updates collapse toggle
   const [showViewedUpdates, setShowViewedUpdates] = useState(true);
 
@@ -101,26 +189,27 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
           <div
             onClick={() => {
               if (myStatuses.length > 0) {
-                setViewingStatuses(myStatuses);
+                handleOpenStatusViewer(myStatuses, "my");
               } else {
                 setIsTextModalOpen(true);
               }
             }}
             className="flex items-center gap-3.5 flex-1 min-w-0 cursor-pointer group"
           >
-            <div className="relative flex-shrink-0">
+            <div className="relative flex-shrink-0 flex items-center justify-center">
               {myStatuses.length > 0 ? (
                 /* Segmented or gradient story ring */
-                <div className="p-0.5 rounded-full bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] shadow-sm">
-                  <Avatar
-                    name={currentUser.displayName}
-                    src={currentUser.avatarUrl}
-                    size="lg"
-                    className="border-2 border-white dark:border-[#0F172A]"
-                  />
+                <div className="w-[62px] h-[62px] rounded-full p-[2.5px] bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] flex items-center justify-center flex-shrink-0 shadow-xs">
+                  <div className="w-full h-full rounded-full p-[2px] bg-white dark:bg-[#0F172A] flex items-center justify-center">
+                    <Avatar
+                      name={currentUser.displayName}
+                      src={currentUser.avatarUrl}
+                      size="lg"
+                    />
+                  </div>
                 </div>
               ) : (
-                <>
+                <div className="relative w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0">
                   <Avatar
                     name={currentUser.displayName}
                     src={currentUser.avatarUrl}
@@ -129,7 +218,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
                   <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-[#2563EB] text-white flex items-center justify-center border-2 border-white dark:border-[#0F172A] shadow-xs">
                     <Icon name="add" size="xs" />
                   </span>
-                </>
+                </div>
               )}
             </div>
 
@@ -214,18 +303,19 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
                 <button
                   key={group.userId}
                   type="button"
-                  onClick={() => setViewingStatuses(group.statuses)}
+                  onClick={() => handleOpenStatusViewer(group.statuses, group.userId)}
                   className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     {/* Vibrant ring indicating unviewed status */}
-                    <div className="p-0.5 rounded-full bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] shadow-sm flex-shrink-0">
-                      <Avatar
-                        name={group.userDisplayName}
-                        src={group.userAvatarUrl}
-                        size="md"
-                        className="border-2 border-white dark:border-[#0F172A]"
-                      />
+                    <div className="w-[50px] h-[50px] rounded-full p-[2px] bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] flex items-center justify-center flex-shrink-0 shadow-xs">
+                      <div className="w-full h-full rounded-full p-[1.5px] bg-white dark:bg-[#0F172A] flex items-center justify-center">
+                        <Avatar
+                          name={group.userDisplayName}
+                          src={group.userAvatarUrl}
+                          size="md"
+                        />
+                      </div>
                     </div>
                     <div className="min-w-0">
                       <h5 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -270,17 +360,19 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
                   <button
                     key={group.userId}
                     type="button"
-                    onClick={() => setViewingStatuses(group.statuses)}
+                    onClick={() => handleOpenStatusViewer(group.statuses, group.userId)}
                     className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors opacity-80 hover:opacity-100"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {/* Subtle ring for viewed status */}
-                      <div className="p-0.5 rounded-full border-2 border-slate-300 dark:border-slate-700 flex-shrink-0">
-                        <Avatar
-                          name={group.userDisplayName}
-                          src={group.userAvatarUrl}
-                          size="md"
-                        />
+                      <div className="w-[50px] h-[50px] rounded-full p-[2px] border-2 border-slate-300/80 dark:border-slate-700 flex items-center justify-center flex-shrink-0">
+                        <div className="w-full h-full rounded-full p-[1.5px] bg-white dark:bg-[#0F172A] flex items-center justify-center">
+                          <Avatar
+                            name={group.userDisplayName}
+                            src={group.userAvatarUrl}
+                            size="md"
+                          />
+                        </div>
                       </div>
                       <div className="min-w-0">
                         <h5 className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
@@ -325,7 +417,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
       {viewingStatuses && viewingStatuses.length > 0 && (
         <StatusViewerModal
           isOpen={true}
-          onClose={() => setViewingStatuses(null)}
+          onClose={handleModalClose}
           statuses={viewingStatuses}
           currentUser={currentUser}
           onStatusDeleted={(deletedId) => {

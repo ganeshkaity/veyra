@@ -758,7 +758,7 @@ function AuthContent() {
               label="Display Name"
               type="text"
               required
-              placeholder="e.g. Ganesh Kaity"
+              placeholder="e.g. Alan Becker"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               leftIcon={<Icon name="badge" size="sm" />}

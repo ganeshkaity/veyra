@@ -184,7 +184,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
           aria-label="Voice Call"
           className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
-          <Icon name="call" size="sm" />
+          <Icon name="call" size="md" />
         </button>
 
         <button
@@ -193,7 +193,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
           aria-label="Video Call"
           className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
-          <Icon name="videocam" size="sm" />
+          <Icon name="videocam" size="md" />
         </button>
 
         {/* 3-dot Menu Button replacing Info button */}
@@ -205,7 +205,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
             showMenu ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white" : ""
           }`}
         >
-          <Icon name="more_vert" size="sm" />
+          <Icon name="more_vert" size="md" />
         </button>
 
         {/* Chat Options Dropdown Menu */}
