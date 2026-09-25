@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import type { MetadataRoute } from "next";
 
-// Narrow (mobile) screenshots � 720x1280, aspect ratio 9:16
+// Narrow (mobile) screenshots  720x1280, aspect ratio 9:16
 const narrowScreenshots = [
   { src: "/screenshots/mobile1.png", sizes: "720x1280", type: "image/png", form_factor: "narrow", label: "Chats & Filter Lists" },
   { src: "/screenshots/mobile2.png", sizes: "720x1280", type: "image/png", form_factor: "narrow", label: "Direct Conversation & Voice" },
@@ -12,8 +12,8 @@ const narrowScreenshots = [
   { src: "/screenshots/mobile7.png", sizes: "720x1280", type: "image/png", form_factor: "narrow", label: "Settings & Account Privacy" },
   { src: "/screenshots/mobile8.png", sizes: "720x1280", type: "image/png", form_factor: "narrow", label: "Appearance & Dynamic Themes" },
 ];
-  
-// Wide (desktop) screenshots � 1280x720, aspect ratio 16:9
+
+// Wide (desktop) screenshots  1280x720, aspect ratio 16:9
 const wideScreenshots = [
   { src: "/screenshots/desktop1.png", sizes: "1280x720", type: "image/png", form_factor: "wide", label: "Chats & Chat Lists" },
   { src: "/screenshots/desktop2.png", sizes: "1280x720", type: "image/png", form_factor: "wide", label: "Real-Time Conversation" },
@@ -25,7 +25,7 @@ const wideScreenshots = [
 ];
 
 const baseManifest = {
-  name: "Veyra � Har Baat, Apno Ke Saath",
+  name: "Veyra - Har Baat, Apno Ke Saath",
   short_name: "Veyra",
   description: "A modern, secure, and fast messaging application built with real-time sync, stories, and end-to-end privacy.",
   start_url: "/chat",
@@ -54,7 +54,7 @@ export default async function manifest() {
   const headersList = await headers();
   const ua = headersList.get("user-agent") ?? "";
 
-  // Detect Android � Chrome on Android requests the manifest with an Android UA.
+  // Detect Android  Chrome on Android requests the manifest with an Android UA.
   // We serve ONLY the platform-matching form_factor so Chrome'"'"'s 8-screenshot
   // counter is never wasted on screenshots it will skip anyway.
   // See: InstallableDataFetcher::OnScreenshotFetched in Chromium source �
