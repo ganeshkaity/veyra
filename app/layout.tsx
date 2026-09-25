@@ -28,7 +28,12 @@ export const metadata: Metadata = {
   description:
     "A modern, premium, secure web-based messaging application built with Firebase and Next.js.",
   icons: {
-    icon: "/assets/main_logo.png",
+    icon: [
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/assets/favicon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
   },
 };
 
@@ -38,8 +43,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${jakarta.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <head>
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/favicon.png" />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"

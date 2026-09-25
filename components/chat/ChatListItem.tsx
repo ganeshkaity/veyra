@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Conversation, UserProfile } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -9,14 +9,20 @@ interface ChatListItemProps {
   conversation: Conversation;
   currentUser: UserProfile;
   isSelected: boolean;
+  hasUnviewedStory?: boolean;
   onSelect: () => void;
+  onContextMenu?: (x: number, y: number, conv: Conversation) => void;
+  onAvatarClick?: (conv: Conversation, name: string, avatarUrl: string) => void;
 }
 
 export const ChatListItem: React.FC<ChatListItemProps> = ({
   conversation,
   currentUser,
   isSelected,
+  hasUnviewedStory = false,
   onSelect,
+  onContextMenu,
+  onAvatarClick,
 }) => {
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
 
@@ -100,17 +106,101 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   const isRead = conversation.lastMessage?.status === "read";
   const isDelivered = conversation.lastMessage?.status === "delivered";
 
+  // Long-press (450ms) for mobile and right-click for desktop
+  const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressTriggeredRef = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
+    isLongPressTriggeredRef.current = false;
+
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try {
+          navigator.vibrate(35);
+        } catch (_) {}
+      }
+      onContextMenu?.(touchStartXRef.current, touchStartYRef.current, conversation);
+    }, 450);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    const diffX = currentX - touchStartXRef.current;
+    const diffY = currentY - touchStartYRef.current;
+
+    // Cancel long press if user is scrolling
+    if (Math.hypot(diffX, diffY) > 8) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (isLongPressTriggeredRef.current) {
+      e.preventDefault();
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isLongPressTriggeredRef.current) {
+      isLongPressTriggeredRef.current = false;
+      return;
+    }
+    onSelect();
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu?.(e.clientX, e.clientY, conversation);
+  };
+
   return (
-    <button
-      onClick={onSelect}
-      className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-all border-b border-slate-100 dark:border-slate-800/60 select-none group relative ${
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onContextMenu={handleContextMenu}
+      className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-all border-b border-slate-100 dark:border-slate-800/60 select-none group relative cursor-pointer ${
         isSelected
           ? "bg-blue-50/70 dark:bg-blue-950/30 border-l-4 border-l-[#2563EB]"
           : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
       }`}
     >
       {/* Avatar Container */}
-      <div className="relative flex-shrink-0">
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          onAvatarClick?.(conversation, name, avatarUrl);
+        }}
+        className={`relative flex-shrink-0 cursor-pointer rounded-full transition-all hover:scale-105 active:scale-95 ${
+          hasUnviewedStory
+            ? "p-[2.5px] rounded-full ring-2 ring-sky-400 dark:ring-sky-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-sm"
+            : ""
+        }`}
+        title={hasUnviewedStory ? `View ${name}'s story` : `View ${name}'s profile photo`}
+      >
         {isGroup ? (
           avatarUrl ? (
             <Avatar name={name} src={avatarUrl} size="md" />
@@ -196,6 +286,6 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 };

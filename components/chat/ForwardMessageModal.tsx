@@ -12,6 +12,7 @@ import {
   createDirectConversation,
 } from "@/lib/firestore/conversationService";
 import { searchUsersByUsername } from "@/lib/firestore/userService";
+import { WhatsAppForwardIcon } from "./WhatsAppForwardIcon";
 
 interface ForwardMessageModalProps {
   isOpen: boolean;
@@ -143,20 +144,30 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
       <div className="space-y-4">
         {/* Message preview snippet */}
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#2563EB]/10 dark:bg-[#14B8A6]/10 flex items-center justify-center text-[#2563EB] dark:text-[#14B8A6] flex-shrink-0">
-            <Icon name="forward" size="sm" />
-          </div>
+          {message.mediaUrl ? (
+            <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/5 dark:bg-white/5 flex-shrink-0 flex items-center justify-center border border-slate-200/60 dark:border-slate-700/60">
+              <img
+                src={message.mediaUrl}
+                alt="Media preview"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-9 h-9 rounded-lg bg-[#2563EB]/10 dark:bg-[#14B8A6]/10 flex items-center justify-center text-[#2563EB] dark:text-[#14B8A6] flex-shrink-0">
+              <WhatsAppForwardIcon className="w-4 h-4" />
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               Forwarding
             </span>
-            <p className="text-xs text-slate-800 dark:text-slate-200 truncate mt-0.5">
+            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate mt-0.5">
               {message.type === "image"
-                ? "📷 Photo"
+                ? message.text ? `📷 ${message.text}` : "📷 Photo"
                 : message.type === "gif"
                 ? "👾 GIF"
                 : message.type === "sticker"
-                ? `${message.text} Sticker`
+                ? `${message.text || "Sticker"}`
                 : message.text}
             </p>
           </div>

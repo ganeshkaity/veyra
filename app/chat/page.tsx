@@ -18,7 +18,6 @@ import { StatusView } from "@/components/status/StatusView";
 import { GroupsView } from "@/components/groups/GroupsView";
 import { ProfileView } from "@/components/profile/ProfileView";
 import { SettingsView } from "@/components/settings/SettingsView";
-import { VeyraAiFloatingButton } from "@/components/ai/VeyraAiFloatingButton";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 
@@ -241,10 +240,6 @@ export default function ChatPage() {
               )}
             </div>
 
-            {/* Floating Veyra AI button in Chats view */}
-            {!selectedConversationId && (
-              <VeyraAiFloatingButton onClick={handleOpenAi} />
-            )}
           </div>
         )}
 

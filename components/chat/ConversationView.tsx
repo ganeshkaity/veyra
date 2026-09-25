@@ -469,6 +469,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
           currentUser={currentUser}
           presence={presence}
           typingList={typingList}
+          messages={messages}
           isAiResponding={isAiResponding}
           onToggleDetails={() => setShowDetails(!showDetails)}
           onBackMobile={onBackMobile}

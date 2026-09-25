@@ -7,11 +7,15 @@ import { Icon } from "@/components/ui/Icon";
 interface ImageMessageProps {
   message: ChatMessage;
   onOpenViewer: (message: ChatMessage) => void;
+  hasCaption?: boolean;
+  children?: React.ReactNode;
 }
 
 export const ImageMessage: React.FC<ImageMessageProps> = ({
   message,
   onOpenViewer,
+  hasCaption = false,
+  children,
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -22,7 +26,9 @@ export const ImageMessage: React.FC<ImageMessageProps> = ({
   return (
     <div
       onClick={() => !hasError && onOpenViewer(message)}
-      className="relative rounded-2xl overflow-hidden cursor-pointer group mb-1.5 max-w-sm border border-black/5 dark:border-white/10 shadow-xs"
+      className={`relative rounded-2xl overflow-hidden cursor-pointer group max-w-sm border border-black/5 dark:border-white/10 shadow-xs ${
+        hasCaption ? "mb-1.5" : "mb-0"
+      }`}
     >
       {/* Loading Skeleton */}
       {!isLoaded && !hasError && (
@@ -52,7 +58,7 @@ export const ImageMessage: React.FC<ImageMessageProps> = ({
 
           {/* Quality Pill Badge */}
           {isLoaded && (
-            <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-black/50 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider shadow-sm select-none">
+            <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-black/50 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider shadow-sm select-none z-10">
               {quality.toUpperCase()}
             </div>
           )}
@@ -65,10 +71,13 @@ export const ImageMessage: React.FC<ImageMessageProps> = ({
               </div>
             </div>
           )}
+
+          {/* Floating overlay (e.g. timestamp & ticks when no caption) */}
+          {children}
         </div>
       )}
 
-      {fileName && (
+      {hasCaption && fileName && (
         <p className="text-[11px] text-slate-400 mt-1 px-1 truncate select-none">
           {fileName}
         </p>
