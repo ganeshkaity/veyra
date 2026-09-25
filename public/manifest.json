@@ -6,21 +6,13 @@
   "id": "/chat",
   "scope": "/",
   "display": "standalone",
-  "display_override": [
-    "window-controls-overlay",
-    "standalone",
-    "minimal-ui"
-  ],
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#0B1120",
   "theme_color": "#2563EB",
   "lang": "en",
   "dir": "ltr",
-  "categories": [
-    "social",
-    "communication",
-    "utilities"
-  ],
+  "categories": ["social", "communication", "utilities"],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -43,101 +35,60 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshots/desktop1.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Main Page"
-    },
-    {
-      "src": "/screenshots/desktop2.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Dark Mode"
-    },
-    {
-      "src": "/screenshots/desktop3.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Status"
-    },
-    {
-      "src": "/screenshots/desktop4.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "View Status"
-    },
-    {
-      "src": "/screenshots/desktop5.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Chat with Veyra AI"
-    },
-    {
-      "src": "/screenshots/desktop6.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "React messages"
-    },
-    {
-      "src": "/screenshots/desktop7.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Create new chat or create group chat"
-    },
-    {
       "src": "/screenshots/mobile1.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "Chat Section"
+      "form_factor": "narrow",
+      "label": "Chats & Filter Lists"
     },
     {
       "src": "/screenshots/mobile2.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "Setting Page"
+      "form_factor": "narrow",
+      "label": "Direct Conversation & Voice"
     },
     {
       "src": "/screenshots/mobile3.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "Profile Page"
+      "form_factor": "narrow",
+      "label": "Status Updates & Stories"
     },
     {
       "src": "/screenshots/mobile4.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "Locak Chat Feature"
+      "form_factor": "narrow",
+      "label": "Status Reactions & Replies"
     },
     {
       "src": "/screenshots/mobile5.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "View or create status"
+      "form_factor": "narrow",
+      "label": "Passkey Protected Lock Chats"
     },
     {
       "src": "/screenshots/mobile6.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "View Status or reply"
+      "form_factor": "narrow",
+      "label": "Manage Custom Chat Lists"
     },
     {
       "src": "/screenshots/mobile7.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "Create or Write Status"
+      "form_factor": "narrow",
+      "label": "Settings & Account Privacy"
     },
     {
       "src": "/screenshots/mobile8.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "label": "Chat with Veyra AI"
+      "form_factor": "narrow",
+      "label": "Appearance & Dynamic Themes"
     }
   ],
   "shortcuts": [
@@ -146,36 +97,21 @@
       "short_name": "Chats",
       "description": "Open your active conversations",
       "url": "/chat",
-      "icons": [
-        {
-          "src": "/icons/icon-192x192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     },
     {
       "name": "Status Updates",
       "short_name": "Status",
       "description": "View contact statuses and stories",
       "url": "/status",
-      "icons": [
-        {
-          "src": "/icons/icon-192x192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     },
     {
       "name": "Settings",
       "short_name": "Settings",
       "description": "Configure your account and preferences",
       "url": "/setting",
-      "icons": [
-        {
-          "src": "/icons/icon-192x192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     }
   ],
   "prefer_related_applications": false

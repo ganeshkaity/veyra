@@ -1,5 +1,5 @@
 // Veyra Service Worker (TWA & PWA Support)
-const CACHE_NAME = "veyra-cache-v2";
+const CACHE_NAME = "veyra-cache-v3";
 const STATIC_ASSETS = [
   "/",
   "/chat",

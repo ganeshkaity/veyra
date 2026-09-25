@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   title: "Veyra — Har Baat, Apno Ke Saath.",
   description:
     "A modern, premium, secure web-based messaging application built with Firebase and Next.js.",
-  manifest: "/manifest.json",
+  manifest: "/manifest.json?v=2.0.0",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -58,7 +58,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <link rel="manifest" href="/manifest.json" />
+        <link rel="manifest" href="/manifest.json?v=2.0.0" />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="application-name" content="Veyra" />
