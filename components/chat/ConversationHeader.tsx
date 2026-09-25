@@ -65,7 +65,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   if (isAi) {
     statusText = isAiResponding
       ? "thinking..."
-      : "AI Agent • Powered by GPT-OSS";
+      : "AI Agent - Powered by GPT-OSS";
   } else if (typingList.length > 0) {
     statusText =
       typingList.length === 1
