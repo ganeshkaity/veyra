@@ -6,13 +6,21 @@
   "id": "/chat",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "any",
   "background_color": "#0B1120",
   "theme_color": "#2563EB",
   "lang": "en",
   "dir": "ltr",
-  "categories": ["social", "communication", "utilities"],
+  "categories": [
+    "social",
+    "communication",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -87,56 +95,48 @@
       "src": "/screenshots/mobile1.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "Chat Section"
     },
     {
       "src": "/screenshots/mobile2.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "Setting Page"
     },
     {
       "src": "/screenshots/mobile3.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "Profile Page"
     },
     {
       "src": "/screenshots/mobile4.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "Locak Chat Feature"
     },
     {
       "src": "/screenshots/mobile5.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "View or create status"
     },
     {
       "src": "/screenshots/mobile6.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "View Status or reply"
     },
     {
       "src": "/screenshots/mobile7.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "Create or Write Status"
     },
     {
       "src": "/screenshots/mobile8.png",
       "sizes": "720x1280",
       "type": "image/png",
-      "form_factor": "narrow",
       "label": "Chat with Veyra AI"
     }
   ],
@@ -146,21 +146,36 @@
       "short_name": "Chats",
       "description": "Open your active conversations",
       "url": "/chat",
-      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Status Updates",
       "short_name": "Status",
       "description": "View contact statuses and stories",
       "url": "/status",
-      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Settings",
       "short_name": "Settings",
       "description": "Configure your account and preferences",
       "url": "/setting",
-      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
   "prefer_related_applications": false
