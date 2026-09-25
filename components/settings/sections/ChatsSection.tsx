@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { updateUserProfile } from "@/lib/firestore/userService";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useAlert } from "@/components/providers/AlertModalProvider";
 import { uploadImage } from "@/lib/storage/imgbbService";
 import { WallpaperPreviewModal } from "../wallpaper/WallpaperPreviewModal";
 
@@ -21,6 +22,7 @@ export const ChatsSection: React.FC<ChatsSectionProps> = ({
   onBack,
 }) => {
   const { refreshProfile } = useAuth();
+  const { showAlert } = useAlert();
   const [wallpaper, setWallpaper] = useState<string>(
     currentUser.chatWallpaper || "default"
   );
@@ -70,12 +72,18 @@ export const ChatsSection: React.FC<ChatsSectionProps> = ({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please choose a valid image file (PNG, JPG, WebP).");
+      showAlert("Please choose a valid image file (PNG, JPG, WebP).", {
+        title: "Invalid File Type",
+        type: "warning",
+      });
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      alert("File size exceeds 10MB limit. Please select a smaller image.");
+      showAlert("File size exceeds 10MB limit. Please select a smaller image.", {
+        title: "File Too Large",
+        type: "warning",
+      });
       return;
     }
 
@@ -102,7 +110,9 @@ export const ChatsSection: React.FC<ChatsSectionProps> = ({
       showToast("Default Veyra wallpaper restored universally.");
     } catch (err) {
       console.error("Failed to restore default wallpaper:", err);
-      alert("Failed to restore default wallpaper. Please try again.");
+      showAlert("Failed to restore default wallpaper. Please try again.", {
+        type: "error",
+      });
     } finally {
       setIsUpdatingWallpaper(false);
     }
@@ -141,7 +151,7 @@ export const ChatsSection: React.FC<ChatsSectionProps> = ({
     } catch (err: unknown) {
       console.error("Failed to apply wallpaper:", err);
       const msg = err instanceof Error ? err.message : "Failed to apply wallpaper";
-      alert(`${msg}. Please try again.`);
+      showAlert(`${msg}. Please try again.`, { type: "error" });
     } finally {
       setIsUpdatingWallpaper(false);
     }
@@ -599,7 +609,7 @@ export const ChatsSection: React.FC<ChatsSectionProps> = ({
               variant="danger"
               size="sm"
               onClick={() => {
-                alert(`${confirmModal?.actionText} completed.`);
+                showToast(`${confirmModal?.actionText} completed.`);
                 setConfirmModal(null);
               }}
             >

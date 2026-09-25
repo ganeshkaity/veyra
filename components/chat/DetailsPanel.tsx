@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { useAlert } from "@/components/providers/AlertModalProvider";
 import { subscribeToUserPresence, formatLastSeen } from "@/lib/realtime/presenceService";
 import {
   subscribeToGroup,
@@ -39,6 +40,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   onClose,
   onGroupDeletedOrLeft,
 }) => {
+  const { showConfirm, showAlert } = useAlert();
   const [presence, setPresence] = useState<UserPresence | null>(null);
   const [groupDetails, setGroupDetails] = useState<GroupDetails | null>(null);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
@@ -116,10 +118,15 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
 
   const handleResetInvite = async () => {
     if (!groupDetails) return;
-    if (confirm("Reset the invite link? The previous link will stop working.")) {
+    const confirmed = await showConfirm(
+      "Reset the invite link? The previous link will stop working.",
+      { title: "Reset Invite Link", type: "warning", confirmText: "Reset Link" }
+    );
+    if (confirmed) {
       try {
         setActionLoading(true);
         await regenerateInviteCode(groupDetails.id, currentUser);
+        await showAlert("Invite link has been reset successfully.", { type: "success" });
       } catch (err: any) {
         setActionError(err.message || "Failed to reset invite link.");
       } finally {
@@ -180,7 +187,12 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   // Member management
   const handleRemoveMember = async (memberId: string, memberName: string) => {
     if (!groupDetails) return;
-    if (confirm(`Remove ${memberName} from this group?`)) {
+    const confirmed = await showConfirm(`Remove ${memberName} from this group?`, {
+      title: "Remove Member",
+      type: "warning",
+      confirmText: "Remove",
+    });
+    if (confirmed) {
       try {
         await removeMemberFromGroup(groupDetails.id, memberId, memberName, currentUser);
         setActiveMemberMenuUid(null);
@@ -202,7 +214,12 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
 
   const handleDemoteAdmin = async (memberId: string, memberName: string) => {
     if (!groupDetails) return;
-    if (confirm(`Dismiss ${memberName} as an admin?`)) {
+    const confirmed = await showConfirm(`Dismiss ${memberName} as an admin?`, {
+      title: "Dismiss Admin",
+      type: "warning",
+      confirmText: "Dismiss",
+    });
+    if (confirmed) {
       try {
         await demoteAdmin(groupDetails.id, memberId, memberName, currentUser);
         setActiveMemberMenuUid(null);
@@ -215,7 +232,12 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   // Leave & Delete group
   const handleLeaveGroup = async () => {
     if (!groupDetails) return;
-    if (confirm("Are you sure you want to leave this group?")) {
+    const confirmed = await showConfirm("Are you sure you want to leave this group?", {
+      title: "Leave Group",
+      type: "warning",
+      confirmText: "Leave",
+    });
+    if (confirmed) {
       try {
         await leaveGroup(groupDetails.id, currentUser);
         onClose();
@@ -228,7 +250,12 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
 
   const handleDeleteGroup = async () => {
     if (!groupDetails) return;
-    if (confirm("Are you sure you want to delete this group? This cannot be undone.")) {
+    const confirmed = await showConfirm("Are you sure you want to delete this group? This cannot be undone.", {
+      title: "Delete Group",
+      type: "error",
+      confirmText: "Delete",
+    });
+    if (confirmed) {
       try {
         await deleteGroup(groupDetails.id, currentUser);
         onClose();

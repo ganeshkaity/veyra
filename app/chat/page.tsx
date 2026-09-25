@@ -18,10 +18,15 @@ import { StatusView } from "@/components/status/StatusView";
 import { GroupsView } from "@/components/groups/GroupsView";
 import { ProfileView } from "@/components/profile/ProfileView";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { ArchivedChatsView } from "@/components/chat/ArchivedChatsView";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 
-export default function ChatPage() {
+export interface ChatPageProps {
+  initialArchive?: boolean;
+}
+
+export default function ChatPage({ initialArchive = false }: ChatPageProps) {
   const router = useRouter();
   const { user, profile, loading, isEmailVerified, is2FAPending } = useAuth();
 
@@ -29,6 +34,7 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(initialArchive);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
 
@@ -77,7 +83,7 @@ export default function ChatPage() {
   }, [user]);
 
   // Open / Select conversation with client-side history navigation
-  const handleSelectConversation = (id: string | null) => {
+  const handleSelectConversation = (id: string | null, fromArchive?: boolean) => {
     if (!id) {
       handleCloseConversation();
       return;
@@ -87,18 +93,18 @@ export default function ChatPage() {
 
     setSelectedConversationId(id);
 
-    if (typeof window !== "undefined") {
-      const url = `/chat?chat=${encodeURIComponent(id)}`;
-      const params = new URLSearchParams(window.location.search);
-      const currentlyHasChat =
-        params.has("chat") || params.has("id") || params.has("ai");
+    const inArchive = fromArchive !== undefined ? fromArchive : isArchiveOpen;
 
-      // When opening a chat from the chat list, add a browser history entry so Back returns to chat list.
-      // If switching directly between open chats (e.g. desktop), replace state so Back still returns to chat list.
-      if (!currentlyHasChat && !selectedConversationId) {
-        window.history.pushState({ chatId: id }, "", url);
+    if (typeof window !== "undefined") {
+      const basePath = inArchive ? "/archive/chat" : "/chat";
+      const url = `${basePath}?chat=${encodeURIComponent(id)}`;
+
+      // When opening a chat from the chat list, add a browser history entry so Back returns to chat/archive list.
+      // If switching directly between open chats (e.g. desktop), replace state so Back still returns to list.
+      if (!selectedConversationId) {
+        window.history.pushState({ chatId: id, inArchive }, "", url);
       } else {
-        window.history.replaceState({ chatId: id }, "", url);
+        window.history.replaceState({ chatId: id, inArchive }, "", url);
       }
     }
   };
@@ -107,10 +113,8 @@ export default function ChatPage() {
   const handleCloseConversation = () => {
     setSelectedConversationId(null);
     if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has("chat") || params.has("id") || params.has("ai")) {
-        window.history.replaceState({ chatId: null }, "", "/chat");
-      }
+      const resetPath = isArchiveOpen ? "/archive" : "/chat";
+      window.history.replaceState({ chatId: null, inArchive: isArchiveOpen }, "", resetPath);
     }
   };
 
@@ -126,19 +130,43 @@ export default function ChatPage() {
     handleCloseConversation();
   };
 
+  // Open Archived Chats View (Client-side history without reload)
+  const handleOpenArchive = () => {
+    setIsArchiveOpen(true);
+    if (typeof window !== "undefined") {
+      window.history.pushState({ inArchive: true }, "", "/archive");
+    }
+  };
+
+  // Close Archived Chats View and return to standard chat list
+  const handleCloseArchive = () => {
+    setIsArchiveOpen(false);
+    setSelectedConversationId(null);
+    if (typeof window !== "undefined") {
+      if (window.location.pathname.startsWith("/archive")) {
+        window.history.pushState({ inArchive: false }, "", "/chat");
+      }
+    }
+  };
+
   // Handle browser & Android Back / Forward navigation (popstate)
   useEffect(() => {
     const handlePopState = () => {
+      if (typeof window === "undefined") return;
+      const pathname = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
       const chatIdFromUrl = params.get("chat") || params.get("id");
       const isAi = params.get("ai") === "true";
+
+      const inArchive = pathname.startsWith("/archive");
+      setIsArchiveOpen(inArchive);
 
       if (chatIdFromUrl) {
         setSelectedConversationId(chatIdFromUrl);
       } else if (isAi) {
         setSelectedConversationId(VEYRA_AI_CONVERSATION_ID);
       } else {
-        // Back pressed while viewing chat: close chat & return to chat list
+        // Back pressed while viewing chat: close chat & return to list
         setSelectedConversationId(null);
       }
     };
@@ -151,29 +179,37 @@ export default function ChatPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    const pathname = window.location.pathname;
+    const inArchive = initialArchive || pathname.startsWith("/archive");
+    if (inArchive) {
+      setIsArchiveOpen(true);
+    }
+
     const params = new URLSearchParams(window.location.search);
     const initialChatId = params.get("chat") || params.get("id");
     const isAi = params.get("ai") === "true";
 
+    const basePath = inArchive ? "/archive" : "/chat";
+    const chatPath = inArchive ? "/archive/chat" : "/chat";
+
     if (initialChatId) {
       setSelectedConversationId(initialChatId);
-      // To ensure pressing Back once returns to chat list even on direct link or reload:
-      window.history.replaceState({ chatId: null }, "", "/chat");
+      window.history.replaceState({ chatId: null, inArchive }, "", basePath);
       window.history.pushState(
-        { chatId: initialChatId },
+        { chatId: initialChatId, inArchive },
         "",
-        `/chat?chat=${encodeURIComponent(initialChatId)}`
+        `${chatPath}?chat=${encodeURIComponent(initialChatId)}`
       );
     } else if (isAi) {
       setSelectedConversationId(VEYRA_AI_CONVERSATION_ID);
-      window.history.replaceState({ chatId: null }, "", "/chat");
+      window.history.replaceState({ chatId: null, inArchive }, "", basePath);
       window.history.pushState(
-        { chatId: VEYRA_AI_CONVERSATION_ID },
+        { chatId: VEYRA_AI_CONVERSATION_ID, inArchive },
         "",
-        "/chat?chat=ai_veyra"
+        `${chatPath}?chat=ai_veyra`
       );
     }
-  }, []);
+  }, [initialArchive]);
 
   // Open Veyra AI companion conversation
   const handleOpenAi = () => {
@@ -221,18 +257,57 @@ export default function ChatPage() {
   if (loading || !user || !isEmailVerified || is2FAPending || !profile) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[var(--bg-app)]">
-        <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg p-2 bg-white dark:bg-slate-900 mb-4 animate-pulse">
-          <Image
-            src="/assets/main_logo.png"
-            alt="Veyra"
-            width={64}
-            height={64}
-            className="object-contain"
-          />
-        </div>
-        <div className="w-6 h-6 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs text-slate-400 mt-3 font-medium">Opening Veyra...</p>
-      </div>
+  {/* Logo */}
+  <div className="relative mb-6">
+    {/* Soft ambient glow */}
+    <div className="absolute inset-0 rounded-3xl bg-blue-500/20 blur-2xl animate-pulse" />
+
+    {/* Logo container */}
+    <div className="relative w-24 h-24 flex items-center justify-center rounded-3xl animate-[float_2.8s_ease-in-out_infinite]">
+      <Image
+        src="/assets/favicon.png"
+        alt="Veyra"
+        width={88}
+        height={88}
+        className="object-contain drop-shadow-xl"
+        priority
+      />
+    </div>
+  </div>
+
+  {/* Loading dots */}
+  <div className="flex items-center gap-1.5 mb-3">
+    <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-[dot_1.4s_ease-in-out_infinite]" />
+    <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-[dot_1.4s_ease-in-out_0.2s_infinite]" />
+    <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-[dot_1.4s_ease-in-out_0.4s_infinite]" />
+  </div>
+
+  <p className="text-xs text-slate-400/80 font-medium tracking-wide">
+    Opening Veyra
+  </p>
+
+  <style jsx>{`
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0) scale(1);
+      }
+      50% {
+        transform: translateY(-6px) scale(1.025);
+      }
+    }
+
+    @keyframes dot {
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.35;
+      }
+      30% {
+        transform: translateY(-4px);
+        opacity: 1;
+      }
+    }
+  `}</style>
+</div>
     );
   }
 
@@ -262,21 +337,34 @@ export default function ChatPage() {
         {/* TAB: CHATS */}
         {activeTab === "chats" && (
           <div className="flex h-full w-full overflow-hidden">
-            {/* Chat List (Full width on mobile when no conversation selected, responsive width on desktop) */}
+            {/* Chat List or Archived List (Side panel on desktop, full page on mobile) */}
             <div
               className={`h-full w-full md:w-80 lg:w-96 md:flex-shrink-0 ${
                 selectedConversationId ? "hidden md:block" : "block"
               }`}
             >
-              <ChatList
-                conversations={conversations}
-                currentUser={profile}
-                selectedConversationId={selectedConversationId}
-                onSelectConversation={(id) => handleSelectConversation(id)}
-                onNewChat={() => setIsNewChatModalOpen(true)}
-                onNewGroup={() => setIsNewGroupModalOpen(true)}
-                isLoading={isLoadingConversations}
-              />
+              {isArchiveOpen ? (
+                <ArchivedChatsView
+                  conversations={conversations}
+                  currentUser={profile}
+                  selectedConversationId={selectedConversationId}
+                  onSelectConversation={(id) => handleSelectConversation(id, true)}
+                  onBack={handleCloseArchive}
+                  onArchiveToggle={() => setConversations([...conversations])}
+                />
+              ) : (
+                <ChatList
+                  conversations={conversations}
+                  currentUser={profile}
+                  selectedConversationId={selectedConversationId}
+                  onSelectConversation={(id) => handleSelectConversation(id, false)}
+                  onNewChat={() => setIsNewChatModalOpen(true)}
+                  onNewGroup={() => setIsNewGroupModalOpen(true)}
+                  isLoading={isLoadingConversations}
+                  onOpenArchive={handleOpenArchive}
+                  onArchiveToggle={() => setConversations([...conversations])}
+                />
+              )}
             </div>
 
             {/* Conversation Area */}
@@ -297,9 +385,9 @@ export default function ChatPage() {
                 /* Desktop Welcome Empty State */
                 <div className="hidden md:flex flex-col items-center justify-center flex-1 h-full bg-slate-50 dark:bg-[#0B1120] text-center p-8 select-none border-b-4 border-[#2563EB]">
                   <div className="relative mb-6">
-                    <div className="w-32 h-32 rounded-3xl bg-white dark:bg-slate-900 shadow-xl p-4 flex items-center justify-center ring-1 ring-black/5 dark:ring-white/10">
+                    <div className="w-32 h-32 flex items-center justify-center">
                       <Image
-                        src="/assets/main_logo.png"
+                        src="/assets/favicon.png"
                         alt="Veyra"
                         width={112}
                         height={112}

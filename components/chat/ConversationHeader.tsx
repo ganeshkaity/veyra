@@ -65,7 +65,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   if (isAi) {
     statusText = isAiResponding
       ? "thinking..."
-      : "AI Companion • Powered by GPT-OSS";
+      : "AI Agent • Powered by GPT-OSS";
   } else if (typingList.length > 0) {
     statusText =
       typingList.length === 1
@@ -124,7 +124,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   };
 
   return (
-    <div className={`relative flex items-center justify-between px-3 md:px-4 py-2.5 bg-white dark:bg-[#0F172A] border-b border-slate-200 dark:border-slate-800 select-none transition-all ${
+    <div className={`relative flex items-center justify-between px-3 md:px-4 py-1 bg-white dark:bg-[#0F172A] border-b border-slate-200 dark:border-slate-800 select-none transition-all ${
       showMenu ? "z-[60]" : "z-30"
     }`}>
       {/* Toast Alert */}

@@ -66,9 +66,9 @@ export default function GroupInvitePage() {
       <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xl text-center animate-in fade-in zoom-in-95">
         {/* Veyra Brand Logo */}
         <div className="flex justify-center mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 p-1 flex items-center justify-center">
+          <div className="w-12 h-12 flex items-center justify-center">
             <Image
-              src="/assets/main_logo.png"
+              src="/assets/favicon.png"
               alt="Veyra"
               width={36}
               height={36}
@@ -108,7 +108,7 @@ export default function GroupInvitePage() {
             </div>
 
             {preview.description && (
-              <p className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 leading-relaxed text-left">
+              <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 leading-relaxed text-left">
                 {preview.description}
               </p>
             )}

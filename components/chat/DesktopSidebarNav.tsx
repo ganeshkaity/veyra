@@ -27,9 +27,9 @@ export const DesktopSidebarNav: React.FC<DesktopSidebarNavProps> = ({
       {/* Top Section: Brand icon & Main Nav Tabs */}
       <div className="flex flex-col items-center gap-5 w-full">
         {/* Brand Logo */}
-        <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm flex items-center justify-center p-1 bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700">
+        <div className="w-10 h-10 overflow-hidden flex items-center justify-center p-1">
           <Image
-            src="/assets/main_logo.png"
+            src="/assets/favicon.png"
             alt="Veyra"
             width={36}
             height={36}

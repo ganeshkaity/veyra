@@ -21,6 +21,9 @@ import { StorageSection } from "./sections/StorageSection";
 import { HelpSection } from "./sections/HelpSection";
 import { AboutSection } from "./sections/AboutSection";
 import { ProfileSection } from "./sections/ProfileSection";
+import { ManageListsSection } from "./sections/ManageListsSection";
+import { usePwa } from "@/components/providers/PwaProvider";
+import { InstallAppModal } from "./InstallAppModal";
 
 interface SettingsViewProps {
   currentUser: UserProfile;
@@ -35,6 +38,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const { logout } = useAuth();
   const { theme } = useTheme();
+  const { isInstalled, isInstallable, installApp, openInstallModal } = usePwa();
   const [activeSection, setActiveSection] = useState<string | null>(initialSection);
 
   const handleSelectSection = (section: string, routePath: string) => {
@@ -75,6 +79,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }
   if (activeSection === "chats") {
     return <ChatsSection currentUser={currentUser} onBack={() => setActiveSection(null)} />;
+  }
+  if (activeSection === "lists") {
+    return <ManageListsSection currentUser={currentUser} onBack={() => setActiveSection(null)} />;
   }
   if (activeSection === "appearance") {
     return <AppearanceSection onBack={() => setActiveSection(null)} />;
@@ -256,6 +263,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <Icon name="chevron_right" size="sm" className="text-slate-400" />
           </button>
 
+          {/* Manage Chat Lists */}
+          <button
+            type="button"
+            onClick={() => handleSelectSection("lists", "/setting/manage-chat-lists")}
+            className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-[#2563EB] dark:text-[#60A5FA] flex items-center justify-center flex-shrink-0">
+                <Icon name="label" size="xs" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Manage Chat Lists
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Organize filter chips and custom lists
+                </p>
+              </div>
+            </div>
+            <Icon name="chevron_right" size="sm" className="text-slate-400" />
+          </button>
+
           {/* Appearance */}
           <button
             type="button"
@@ -380,6 +409,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
 
+        {/* Install Application Button (Desktop & Android TWA) */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] overflow-hidden shadow-xs">
+          <button
+            type="button"
+            onClick={async () => {
+              if (isInstalled) {
+                openInstallModal();
+              } else if (isInstallable) {
+                await installApp();
+              } else {
+                openInstallModal();
+              }
+            }}
+            className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                <Icon name={isInstalled ? "check_circle" : "get_app"} size="xs" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 group-hover:text-[#2563EB] dark:group-hover:text-[#14B8A6] transition-colors">
+                  Install Application
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  {isInstalled
+                    ? "Application is installed on your device"
+                    : "Install Veyra for desktop or mobile (TWA)"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                  isInstalled
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                    : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-teal-400"
+                }`}
+              >
+                {isInstalled ? "Installed" : "Install"}
+              </span>
+              <Icon
+                name="chevron_right"
+                size="sm"
+                className="text-slate-400 group-hover:translate-x-0.5 transition-transform"
+              />
+            </div>
+          </button>
+        </div>
+
         {/* Log Out Button */}
         <div className="pt-2">
           <Button
@@ -398,7 +477,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="flex items-center justify-center gap-1.5 opacity-60">
             <div className="w-4 h-4 rounded overflow-hidden">
               <Image
-                src="/assets/main_logo.png"
+                src="/assets/favicon.png"
                 alt="Veyra"
                 width={16}
                 height={16}
@@ -412,8 +491,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <p className="text-[10px] text-slate-400">
             "Har Baat, Apno Ke Saath."
           </p>
+          <p className="text-[10px] text-slate-400">
+            Version 1.5.9.0
+          </p>
         </div>
       </div>
+
+      {/* Install Application Guide Modal */}
+      <InstallAppModal />
     </div>
   );
 };

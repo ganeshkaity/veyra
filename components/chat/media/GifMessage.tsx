@@ -19,7 +19,7 @@ export const GifMessage: React.FC<GifMessageProps> = ({
 
   return (
     <div
-      className={`relative rounded-2xl overflow-hidden max-w-xs shadow-xs border border-black/5 dark:border-white/10 group ${
+      className={`relative rounded-2xl overflow-hidden max-w-xs shadow-xs border border-white/5 dark:border-white/10 group ${
         hasCaption ? "mb-1.5" : "mb-0"
       }`}
     >

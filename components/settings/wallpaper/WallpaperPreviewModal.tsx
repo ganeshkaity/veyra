@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { MessageStatusTick } from "@/components/chat/MessageStatusTick";
 import { useTheme } from "@/components/providers/ThemeProvider";
 
 interface WallpaperPreviewModalProps {
@@ -208,13 +209,13 @@ export const WallpaperPreviewModal: React.FC<WallpaperPreviewModalProps> = ({
                   </p>
                   <div className="flex items-center justify-end gap-1 text-[9px] text-slate-500 dark:text-slate-300 mt-1">
                     <span>10:43 AM</span>
-                    <span
-                      className={`font-bold ${
+                    <MessageStatusTick
+                      status="read"
+                      size={14}
+                      className={
                         previewTheme === "dark" ? "text-[#14B8A6]" : "text-[#2563EB]"
-                      }`}
-                    >
-                      ✓✓
-                    </span>
+                      }
+                    />
                   </div>
                 </div>
               </div>

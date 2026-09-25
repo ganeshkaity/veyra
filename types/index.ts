@@ -1,3 +1,9 @@
+export interface ChatListItemConfig {
+  id: string;
+  label: string;
+  isDefault?: boolean;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -16,6 +22,15 @@ export interface UserProfile {
   enterIsSend?: boolean;
   chatWallpaper?: string;
   mediaAutoDownload?: boolean;
+
+  // Lock Chat feature
+  lockedChatEnabled?: boolean;
+  lockedChatPasskey?: string;
+  lockedConversationIds?: string[];
+
+  // Chat Lists feature
+  chatLists?: ChatListItemConfig[];
+  conversationListMemberships?: Record<string, string[]>;
 }
 
 export type MessageType = 'text' | 'image' | 'gif' | 'sticker';
@@ -84,6 +99,8 @@ export interface Conversation {
     status?: MessageDeliveryStatus;
   };
   unreadCount?: Record<string, number>;
+  archivedBy?: string[];
+  pinnedBy?: string[];
   createdAt: number;
   updatedAt: number;
 }

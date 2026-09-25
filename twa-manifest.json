@@ -1,0 +1,54 @@
+{
+  "packageId": "com.veyra.chat",
+  "host": "localhost:3000",
+  "name": "Veyra",
+  "launcherName": "Veyra",
+  "themeColor": "#2563EB",
+  "navigationColor": "#0B1120",
+  "navigationColorDark": "#0B1120",
+  "navigationDividerColor": "#1E293B",
+  "navigationDividerColorDark": "#1E293B",
+  "backgroundColor": "#0B1120",
+  "enableNotifications": true,
+  "startUrl": "/chat",
+  "iconUrl": "http://localhost:3000/icons/icon-512x512.png",
+  "maskableIconUrl": "http://localhost:3000/icons/maskable-icon-512x512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android-keystore.jks",
+    "alias": "veyra"
+  },
+  "appVersionName": "1.5.9.0",
+  "appVersionCode": 1590,
+  "shortcuts": [
+    {
+      "name": "Chats",
+      "shortName": "Chats",
+      "url": "http://localhost:3000/chat",
+      "chosenIconUrl": "http://localhost:3000/icons/icon-192x192.png"
+    },
+    {
+      "name": "Status",
+      "shortName": "Status",
+      "url": "http://localhost:3000/status",
+      "chosenIconUrl": "http://localhost:3000/icons/icon-192x192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "http://localhost:3000/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": false
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false
+}

@@ -47,9 +47,9 @@ export default function NotFound() {
           href="/chat"
           className="flex items-center gap-2.5 group transition-transform active:scale-95"
         >
-          <div className="w-10 h-10 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 shadow-xs p-1.5 flex items-center justify-center transition-colors">
+          <div className="w-10 h-10 flex items-center justify-center transition-colors">
             <Image
-              src={BRAND.assets.logo}
+              src="/assets/favicon.png"
               alt={BRAND.name}
               width={28}
               height={28}

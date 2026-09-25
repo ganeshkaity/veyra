@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --primary-blue: #2563eb;
@@ -245,4 +247,7 @@ em-emoji-picker {
   height: 100% !important;
   border: none !important;
   font-family: inherit !important;
+}
+.test{
+  color: #ffffff;
 }

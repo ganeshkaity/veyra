@@ -13,6 +13,8 @@ import {
   onSnapshot,
   Unsubscribe,
   serverTimestamp,
+  arrayUnion,
+  arrayRemove,
 } from "firebase/firestore";
 import { db } from "../firebase/client";
 import { Conversation, ChatMessage, UserProfile, ConversationParticipant } from "@/types";
@@ -475,5 +477,207 @@ export async function deleteMessageForMe(
         updatedAt: Date.now(),
       });
     }
+  }
+}
+
+// LocalStorage fallback & cache for instant optimistic updates
+export function getLocalArchivedIds(uid: string): string[] {
+  if (typeof window === "undefined" || !uid) return [];
+  try {
+    const raw = localStorage.getItem(`veyra_archived_${uid}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalArchivedIds(uid: string, ids: string[]): void {
+  if (typeof window === "undefined" || !uid) return;
+  try {
+    localStorage.setItem(`veyra_archived_${uid}`, JSON.stringify(ids));
+  } catch {}
+}
+
+export function getLocalUnarchivedIds(uid: string): string[] {
+  if (typeof window === "undefined" || !uid) return [];
+  try {
+    const raw = localStorage.getItem(`veyra_unarchived_${uid}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalUnarchivedIds(uid: string, ids: string[]): void {
+  if (typeof window === "undefined" || !uid) return;
+  try {
+    localStorage.setItem(`veyra_unarchived_${uid}`, JSON.stringify(ids));
+  } catch {}
+}
+
+export function isConversationArchived(conv: Conversation, uid: string): boolean {
+  if (!uid || !conv) return false;
+  // If explicitly unarchived by user in this session/browser, override any stale snapshot
+  const unarchivedList = getLocalUnarchivedIds(uid);
+  if (unarchivedList.includes(conv.id)) return false;
+
+  const localList = getLocalArchivedIds(uid);
+  if (localList.includes(conv.id)) return true;
+
+  return Boolean(conv.archivedBy && conv.archivedBy.includes(uid));
+}
+
+export async function archiveConversation(conversationId: string, uid: string): Promise<void> {
+  // Remove from unarchived set
+  const unarchived = getLocalUnarchivedIds(uid);
+  setLocalUnarchivedIds(uid, unarchived.filter((id) => id !== conversationId));
+
+  // Add to archived set
+  const current = getLocalArchivedIds(uid);
+  if (!current.includes(conversationId)) {
+    setLocalArchivedIds(uid, [...current, conversationId]);
+  }
+
+  try {
+    const convRef = doc(db, "conversations", conversationId);
+    await updateDoc(convRef, {
+      archivedBy: arrayUnion(uid),
+      updatedAt: Date.now(),
+    });
+  } catch (err) {
+    console.warn("Non-fatal: could not sync archive status to Firestore:", err);
+  }
+}
+
+export async function unarchiveConversation(conversationId: string, uid: string): Promise<void> {
+  // Remove from archived set
+  const current = getLocalArchivedIds(uid);
+  setLocalArchivedIds(uid, current.filter((id) => id !== conversationId));
+
+  // Mark as explicitly unarchived so it immediately disappears from Archived view
+  const unarchived = getLocalUnarchivedIds(uid);
+  if (!unarchived.includes(conversationId)) {
+    setLocalUnarchivedIds(uid, [...unarchived, conversationId]);
+  }
+
+  try {
+    const convRef = doc(db, "conversations", conversationId);
+    await updateDoc(convRef, {
+      archivedBy: arrayRemove(uid),
+      updatedAt: Date.now(),
+    });
+  } catch (err) {
+    console.warn("Non-fatal: could not sync unarchive status to Firestore:", err);
+  }
+}
+
+// ---------------- PINNED CHATS (MAX 4 PER SECTION) ----------------
+
+export function getLocalPinnedIds(uid: string): string[] {
+  if (typeof window === "undefined" || !uid) return [];
+  try {
+    const raw = localStorage.getItem(`veyra_pinned_${uid}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalPinnedIds(uid: string, ids: string[]): void {
+  if (typeof window === "undefined" || !uid) return;
+  try {
+    localStorage.setItem(`veyra_pinned_${uid}`, JSON.stringify(ids));
+  } catch {}
+}
+
+export function getLocalArchivedPinnedIds(uid: string): string[] {
+  if (typeof window === "undefined" || !uid) return [];
+  try {
+    const raw = localStorage.getItem(`veyra_archived_pinned_${uid}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalArchivedPinnedIds(uid: string, ids: string[]): void {
+  if (typeof window === "undefined" || !uid) return;
+  try {
+    localStorage.setItem(`veyra_archived_pinned_${uid}`, JSON.stringify(ids));
+  } catch {}
+}
+
+export function isConversationPinned(
+  conv: Conversation,
+  uid: string,
+  isArchive: boolean = false
+): boolean {
+  if (!uid || !conv) return false;
+  if (isArchive) {
+    const list = getLocalArchivedPinnedIds(uid);
+    return list.includes(conv.id);
+  }
+  const list = getLocalPinnedIds(uid);
+  if (list.includes(conv.id)) return true;
+  return Boolean(conv.pinnedBy && conv.pinnedBy.includes(uid));
+}
+
+export async function pinConversation(
+  conversationId: string,
+  uid: string,
+  isArchive: boolean = false
+): Promise<{ success: boolean; message?: string }> {
+  if (isArchive) {
+    const current = getLocalArchivedPinnedIds(uid);
+    if (current.includes(conversationId)) return { success: true };
+    if (current.length >= 4) {
+      return { success: false, message: "You can only pin up to 4 chats in archived" };
+    }
+    setLocalArchivedPinnedIds(uid, [conversationId, ...current]);
+    return { success: true };
+  }
+
+  const current = getLocalPinnedIds(uid);
+  if (current.includes(conversationId)) return { success: true };
+  if (current.length >= 4) {
+    return { success: false, message: "You can only pin up to 4 chats" };
+  }
+  setLocalPinnedIds(uid, [conversationId, ...current]);
+
+  try {
+    const convRef = doc(db, "conversations", conversationId);
+    await updateDoc(convRef, {
+      pinnedBy: arrayUnion(uid),
+      updatedAt: Date.now(),
+    });
+  } catch (err) {
+    console.warn("Non-fatal: could not sync pin to Firestore:", err);
+  }
+
+  return { success: true };
+}
+
+export async function unpinConversation(
+  conversationId: string,
+  uid: string,
+  isArchive: boolean = false
+): Promise<void> {
+  if (isArchive) {
+    const current = getLocalArchivedPinnedIds(uid);
+    setLocalArchivedPinnedIds(uid, current.filter((id) => id !== conversationId));
+    return;
+  }
+
+  const current = getLocalPinnedIds(uid);
+  setLocalPinnedIds(uid, current.filter((id) => id !== conversationId));
+
+  try {
+    const convRef = doc(db, "conversations", conversationId);
+    await updateDoc(convRef, {
+      pinnedBy: arrayRemove(uid),
+      updatedAt: Date.now(),
+    });
+  } catch (err) {
+    console.warn("Non-fatal: could not sync unpin to Firestore:", err);
   }
 }

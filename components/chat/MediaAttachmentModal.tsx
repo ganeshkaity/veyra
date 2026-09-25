@@ -68,7 +68,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith("image/")) {
-        alert("Please select a valid image file.");
+        setErrorMessage("Please select a valid image file.");
         return;
       }
       setSelectedFile(file);

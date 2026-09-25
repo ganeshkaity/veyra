@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useAlert } from "@/components/providers/AlertModalProvider";
 import { setTwoFactorStatus } from "@/lib/auth/authService";
 import { requestOtp, verifyOtpCode } from "@/lib/auth/otpService";
 
@@ -20,6 +21,7 @@ export const TwoStepSection: React.FC<TwoStepSectionProps> = ({
   onBack,
 }) => {
   const { refreshProfile } = useAuth();
+  const { showAlert, showConfirm } = useAlert();
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
@@ -38,11 +40,11 @@ export const TwoStepSection: React.FC<TwoStepSectionProps> = ({
       if (res.success) {
         setShowOtpModal(true);
       } else {
-        alert(res.error || "Failed to send 2FA verification email.");
+        await showAlert(res.error || "Failed to send 2FA verification email.", { type: "error" });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error sending 2FA code";
-      alert(msg);
+      await showAlert(msg, { type: "error" });
     } finally {
       setIsSendingOtp(false);
     }
@@ -82,11 +84,16 @@ export const TwoStepSection: React.FC<TwoStepSectionProps> = ({
 
   // Disable 2FA
   const handleDisable = async () => {
-    if (confirm("Are you sure you want to disable Two-Step Verification? Your account will be protected by password/Google alone.")) {
+    const confirmed = await showConfirm(
+      "Are you sure you want to disable Two-Step Verification? Your account will be protected by password/Google alone.",
+      { title: "Disable Two-Step Verification", type: "warning", confirmText: "Disable" }
+    );
+    if (confirmed) {
       try {
         setIsTogglingOff(true);
         await setTwoFactorStatus(currentUser.uid, false);
         await refreshProfile();
+        await showAlert("Two-Step Verification has been disabled.", { type: "info" });
       } catch (err) {
         console.error("Failed to disable 2FA:", err);
       } finally {

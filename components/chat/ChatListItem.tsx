@@ -3,6 +3,7 @@ import { Conversation, UserProfile } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
+import { MessageStatusTick } from "./MessageStatusTick";
 import { subscribeToUserPresence, subscribeToTyping } from "@/lib/realtime/presenceService";
 
 interface ChatListItemProps {
@@ -10,7 +11,11 @@ interface ChatListItemProps {
   currentUser: UserProfile;
   isSelected: boolean;
   hasUnviewedStory?: boolean;
+  isPinned?: boolean;
+  isSelectionMode?: boolean;
+  isSelectedForAction?: boolean;
   onSelect: () => void;
+  onToggleSelect?: () => void;
   onContextMenu?: (x: number, y: number, conv: Conversation) => void;
   onAvatarClick?: (conv: Conversation, name: string, avatarUrl: string) => void;
 }
@@ -20,7 +25,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   currentUser,
   isSelected,
   hasUnviewedStory = false,
+  isPinned = false,
+  isSelectionMode = false,
+  isSelectedForAction = false,
   onSelect,
+  onToggleSelect,
   onContextMenu,
   onAvatarClick,
 }) => {
@@ -111,6 +120,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   const touchStartYRef = useRef(0);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressTriggeredRef = useRef(false);
+  const lastLongPressTimeRef = useRef(0);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
@@ -119,6 +129,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
 
     longPressTimerRef.current = setTimeout(() => {
       isLongPressTriggeredRef.current = true;
+      lastLongPressTimeRef.current = Date.now();
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         try {
           navigator.vibrate(35);
@@ -148,14 +159,23 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-    if (isLongPressTriggeredRef.current) {
-      e.preventDefault();
+    if (isLongPressTriggeredRef.current || Date.now() - lastLongPressTimeRef.current < 500) {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      e.stopPropagation();
     }
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (isLongPressTriggeredRef.current) {
+    if (isLongPressTriggeredRef.current || Date.now() - lastLongPressTimeRef.current < 500) {
+      e.preventDefault();
+      e.stopPropagation();
       isLongPressTriggeredRef.current = false;
+      return;
+    }
+    if (isSelectionMode) {
+      onToggleSelect?.();
       return;
     }
     onSelect();
@@ -164,6 +184,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Prevent double-trigger if long-press touch event just fired in the last 600ms
+    if (Date.now() - lastLongPressTimeRef.current < 600) {
+      return;
+    }
     onContextMenu?.(e.clientX, e.clientY, conversation);
   };
 
@@ -175,7 +199,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect();
+          if (isSelectionMode) {
+            onToggleSelect?.();
+          } else {
+            onSelect();
+          }
         }
       }}
       onTouchStart={handleTouchStart}
@@ -183,7 +211,9 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       onTouchEnd={handleTouchEnd}
       onContextMenu={handleContextMenu}
       className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-all border-b border-slate-100 dark:border-slate-800/60 select-none group relative cursor-pointer ${
-        isSelected
+        isSelectedForAction
+          ? "bg-[#00A884]/15 dark:bg-[#00A884]/20 border-l-4 border-l-[#00A884]"
+          : isSelected
           ? "bg-blue-50/70 dark:bg-blue-950/30 border-l-4 border-l-[#2563EB]"
           : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
       }`}
@@ -191,6 +221,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       {/* Avatar Container */}
       <div
         onClick={(e) => {
+          if (isSelectionMode) {
+            onToggleSelect?.();
+            return;
+          }
           e.stopPropagation();
           onAvatarClick?.(conversation, name, avatarUrl);
         }}
@@ -239,7 +273,14 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           </div>
         )}
 
-        {isAi && (
+        {/* Selected Tick Badge (WhatsApp Style, exactly like reference image) */}
+        {isSelectedForAction && (
+          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#00A884] text-[#0B141A] flex items-center justify-center font-black text-xs shadow-md border-2 border-white dark:border-[#0F172A] z-20 animate-in zoom-in-75 duration-150">
+            <Icon name="check" size="xs" className="!text-[13px] font-black" />
+          </div>
+        )}
+
+        {isAi && !isSelectedForAction && (
           <span className="absolute -bottom-1 -right-1 bg-gradient-to-tr from-teal-500 to-emerald-400 text-white rounded-full p-0.5 border-2 border-white dark:border-slate-900 shadow-sm">
             <Icon name="auto_awesome" size="xs" />
           </span>
@@ -261,15 +302,24 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </h4>
           </div>
 
-          <span
-            className={`text-[11px] font-medium ml-2 flex-shrink-0 ${
-              unread > 0
-                ? "text-[#2563EB] font-bold"
-                : "text-slate-400 dark:text-slate-500"
-            }`}
-          >
-            {formatTime(conversation.lastMessage?.timestamp || conversation.updatedAt)}
-          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+            <span
+              className={`text-[11px] font-medium ${
+                unread > 0
+                  ? "text-[#2563EB] font-bold"
+                  : "text-slate-400 dark:text-slate-500"
+              }`}
+            >
+              {formatTime(conversation.lastMessage?.timestamp || conversation.updatedAt)}
+            </span>
+            {isPinned && (
+              <Icon
+                name="keep"
+                size="xs"
+                className="text-slate-400 dark:text-slate-400 rotate-45 !text-[14px]"
+              />
+            )}
+          </div>
         </div>
 
         {/* Message preview snippet or typing state */}
@@ -287,14 +337,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               }`}
             >
               {isLastSenderSelf && (
-                <span
-                  className={`font-bold text-xs select-none flex-shrink-0 ${
-                    isRead ? "text-[#2563EB]" : "text-slate-400"
-                  }`}
-                  title={isRead ? "Read" : isDelivered ? "Delivered" : "Sent"}
-                >
-                  {isDelivered || isRead ? "✓✓" : "✓"}
-                </span>
+                <MessageStatusTick
+                  status={isRead ? "read" : isDelivered ? "delivered" : "sent"}
+                  size={14}
+                  className="flex-shrink-0 mr-0.5"
+                />
               )}
               <span className="truncate">
                 {conversation.lastMessage?.text || (isAi ? "Always here to help you." : "No messages yet")}

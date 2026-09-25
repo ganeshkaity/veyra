@@ -45,16 +45,16 @@ export default function GlobalErrorPage({
           href="/chat"
           className="flex items-center gap-2.5 group transition-transform active:scale-95"
         >
-          <div className="w-10 h-10 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 shadow-xs p-1.5 flex items-center justify-center">
-            <Image
-              src={BRAND.assets.logo}
-              alt={BRAND.name}
-              width={28}
-              height={28}
-              className="object-contain"
-              priority
-            />
-          </div>
+          <div className="w-10 h-10 flex items-center justify-center transition-colors">
+                      <Image
+                        src="/assets/favicon.png"
+                        alt={BRAND.name}
+                        width={28}
+                        height={28}
+                        className="object-contain"
+                        priority
+                      />
+                    </div>
           <div>
             <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-[#2563EB] to-[#14B8A6] bg-clip-text text-transparent">
               {BRAND.name}

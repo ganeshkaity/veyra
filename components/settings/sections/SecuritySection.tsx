@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useAlert } from "@/components/providers/AlertModalProvider";
 import {
   linkGoogleAccount,
   addPasswordToAccount,
@@ -25,6 +26,7 @@ export const SecuritySection: React.FC<SecuritySectionProps> = ({
   onNavigateToTwoStep,
 }) => {
   const { user, refreshProfile } = useAuth();
+  const { showAlert } = useAlert();
 
   // Google linking state
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
@@ -52,11 +54,14 @@ export const SecuritySection: React.FC<SecuritySectionProps> = ({
       setIsLinkingGoogle(true);
       await linkGoogleAccount(user);
       await refreshProfile();
-      alert("Google account connected successfully to your Veyra profile!");
+      await showAlert("Google account connected successfully to your Veyra profile!", {
+        title: "Account Linked",
+        type: "success",
+      });
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Failed to link Google account.";
-      alert(msg);
+      await showAlert(msg, { title: "Linking Failed", type: "error" });
     } finally {
       setIsLinkingGoogle(false);
     }

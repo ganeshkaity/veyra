@@ -397,14 +397,12 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
       }
     }
 
-    if (confirm("Delete this message for everyone?")) {
-      try {
-        await deleteMessageForEveryone(conversation.id, msgId);
-      } catch (err: any) {
-        console.error("Failed to delete message for everyone:", err);
-        setActionErrorToast(err.message || "Failed to delete message for everyone.");
-        setTimeout(() => setActionErrorToast(null), 3500);
-      }
+    try {
+      await deleteMessageForEveryone(conversation.id, msgId);
+    } catch (err: any) {
+      console.error("Failed to delete message for everyone:", err);
+      setActionErrorToast(err.message || "Failed to delete message for everyone.");
+      setTimeout(() => setActionErrorToast(null), 3500);
     }
   };
 
@@ -536,6 +534,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
                     showDateSeparator={showDate}
                     isFirstInGroup={isFirstInGroup}
                     isLastInGroup={isLastInGroup}
+                    isGroup={conversation.type === "group"}
                     onReply={(m) => setReplyingTo(m)}
                     onForward={(m) => setForwardingMessage(m)}
                     onEdit={handleStartEdit}
