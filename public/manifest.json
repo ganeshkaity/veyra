@@ -39,105 +39,105 @@
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "Main Page"
     },
     {
       "src": "/screenshots/desktop2.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "Dark Mode"
     },
     {
       "src": "/screenshots/desktop3.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "Status"
     },
     {
       "src": "/screenshots/desktop4.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "View Status"
     },
     {
       "src": "/screenshots/desktop5.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "Chat with Veyra AI"
     },
     {
       "src": "/screenshots/desktop6.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "React messages"
     },
     {
       "src": "/screenshots/desktop7.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Veyra Desktop Preview"
+      "label": "Create new chat or create group chat"
     },
     {
       "src": "/screenshots/mobile1.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "Chat Section"
     },
     {
       "src": "/screenshots/mobile2.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "Setting Page"
     },
     {
       "src": "/screenshots/mobile3.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "Profile Page"
     },
     {
       "src": "/screenshots/mobile4.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "Locak Chat Feature"
     },
     {
       "src": "/screenshots/mobile5.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "View or create status"
     },
     {
       "src": "/screenshots/mobile6.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "View Status or reply"
     },
     {
       "src": "/screenshots/mobile7.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "Create or Write Status"
     },
     {
       "src": "/screenshots/mobile8.png",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
+      "label": "Chat with Veyra AI"
     }
   ],
   "shortcuts": [
