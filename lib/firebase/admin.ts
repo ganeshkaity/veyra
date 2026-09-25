@@ -1,5 +1,4 @@
-import { getApps, initializeApp, cert, App } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 function formatPrivateKey(key?: string) {
@@ -31,5 +30,9 @@ export function getFirebaseAdminApp(): App {
   return initializeApp();
 }
 
-export const getAdminAuth = () => getAuth(getFirebaseAdminApp());
+export const getAdminAuth = () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getAuth } = require("firebase-admin/auth");
+  return getAuth(getFirebaseAdminApp());
+};
 export const getAdminFirestore = () => getFirestore(getFirebaseAdminApp());
