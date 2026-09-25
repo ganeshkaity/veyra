@@ -157,15 +157,6 @@ export const InstallAppModal: React.FC = () => {
                   </p>
                 </div>
               </div>
-
-              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-700 dark:text-amber-300">
-                <p className="font-semibold flex items-center gap-1.5 mb-1">
-                  <Icon name="info" size="xs" /> Testing over local Wi-Fi?
-                </p>
-                <p>
-                  Android Chrome requires HTTPS or localhost to trigger the native WebAPK install dialog. Run <code className="px-1 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[10px]">adb reverse tcp:3000 tcp:3000</code> and open <code className="px-1 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[10px]">http://localhost:3000</code> on your phone.
-                </p>
-              </div>
             </div>
           )}
 

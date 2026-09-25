@@ -138,20 +138,6 @@
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Veyra Mobile Preview"
-    },
-    {
-      "src": "/screenshots/mobile9.png",
-      "sizes": "720x1280",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
-    },
-    {
-      "src": "/screenshots/mobile10.png",
-      "sizes": "720x1280",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Veyra Mobile Preview"
     }
   ],
   "shortcuts": [
