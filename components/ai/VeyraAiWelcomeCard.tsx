@@ -17,7 +17,7 @@ export const VeyraAiWelcomeCard: React.FC<VeyraAiWelcomeCardProps> = ({
       {/* Prominent Veyra AI Logo with Glowing Ring */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#2563EB] to-[#14B8A6] opacity-35 blur-lg group-hover:opacity-60 transition duration-500" />
-        <div className="relative w-20 h-20 rounded-3xl bg-white dark:bg-[#0F172A] p-2.5 shadow-xl border border-teal-500/30 flex items-center justify-center">
+        <div className="relative w-20 h-20 flex items-center justify-center">
           <Image
             src="/assets/veyra_ai_logo.png"
             alt="Veyra AI"
