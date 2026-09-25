@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isConversationMember(conversationId) {
+      return isAuthenticated() && (
+        conversationId == 'conv_veyra_ai_companion' ||
+        conversationId.matches('^ai_.*') ||
+        exists(/databases/$(database)/documents/conversations/$(conversationId)/members/$(request.auth.uid)) ||
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds
+      );
+    }
+
+    // User profiles: Publicly readable by authenticated users; only writable by owner
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && request.resource.data.email == request.auth.token.email;
+      allow update: if isOwner(userId) && request.resource.data.uid == userId;
+      allow delete: if false; // Soft delete or admin only
+    }
+
+    // Unique username lookup index: read by authenticated users, written during registration
+    match /usernames/{username} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // User settings & security private documents
+    match /userSettings/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    match /userSecurity/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Modified only by secure server API / admin
+    }
+
+    // Conversations
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (
+        conversationId == 'conv_veyra_ai_companion' ||
+        conversationId.matches('^ai_.*') ||
+        request.auth.uid in resource.data.participantIds
+      );
+      allow create: if isAuthenticated() && (
+        conversationId == 'conv_veyra_ai_companion' ||
+        conversationId.matches('^ai_.*') ||
+        request.auth.uid in request.resource.data.participantIds
+      );
+      allow update: if isAuthenticated() && (
+        conversationId == 'conv_veyra_ai_companion' ||
+        conversationId.matches('^ai_.*') ||
+        request.auth.uid in resource.data.participantIds
+      );
+      
+      // Conversation members subcollection
+      match /members/{memberId} {
+        allow read: if isConversationMember(conversationId);
+        allow write: if isConversationMember(conversationId);
+      }
+
+      // Conversation messages subcollection
+      match /messages/{messageId} {
+        allow read: if isConversationMember(conversationId);
+        allow create: if isConversationMember(conversationId) && (
+                        request.resource.data.senderId == request.auth.uid ||
+                        (conversationId == 'conv_veyra_ai_companion' && request.resource.data.senderId == 'veyra_ai_system_companion') ||
+                        (conversationId.matches('^ai_.*') && request.resource.data.senderId == 'veyra_ai_system_companion')
+                      );
+        
+        // Updates:
+        // 1. Edit: author only, within 2 days (172800000 ms), not already deleted
+        // 2. Delete for everyone: author only, within 1 day (86400000 ms), text must be "Oh, the message was deleted"
+        // 3. Delete for me: any conversation member can add their own UID to deletedForUsers
+        // 4. Delivery/Read receipt updates: participants updating status/updatedAt
+        allow update: if isConversationMember(conversationId) && (
+          (
+            resource.data.senderId == request.auth.uid &&
+            resource.data.isDeletedForEveryone != true &&
+            resource.data.deletedForEveryone != true &&
+            (request.time.toMillis() - resource.data.createdAt <= 172800000) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'isEdited', 'editedAt', 'edited', 'updatedAt'])
+          ) ||
+          (
+            resource.data.senderId == request.auth.uid &&
+            (request.time.toMillis() - resource.data.createdAt <= 86400000) &&
+            (request.resource.data.isDeletedForEveryone == true || request.resource.data.deletedForEveryone == true) &&
+            request.resource.data.text == "Oh, the message was deleted" &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'isDeletedForEveryone', 'deletedForEveryone', 'mediaUrl', 'updatedAt'])
+          ) ||
+          (
+            request.resource.data.deletedForUsers.hasAny([request.auth.uid]) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedForUsers', 'updatedAt'])
+          ) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+        
+        allow delete: if false; // Deletions handled via soft-delete flags
+      }
+    }
+
+    // Groups
+    match /groups/{groupId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid in resource.data.members ||
+        (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)
+      );
+      allow create: if isAuthenticated() && (
+        (request.resource.data.createdBy == request.auth.uid || request.resource.data.createdById == request.auth.uid) &&
+        (request.auth.uid in request.resource.data.admins || request.auth.uid in request.resource.data.adminIds)
+      );
+      allow update: if isAuthenticated() && (
+        // 1. Group Admins have full management access
+        (request.auth.uid in resource.data.admins || (resource.data.adminIds != null && request.auth.uid in resource.data.adminIds)) ||
+        // 2. Member leaving (removing self from members/admins)
+        (
+          (request.auth.uid in resource.data.members || (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberIds', 'admins', 'adminIds', 'updatedAt'])
+        ) ||
+        // 3. Member adding someone if settings allow all members
+        (
+          resource.data.settings != null &&
+          resource.data.settings.whoCanAddMembers == 'all' &&
+          (request.auth.uid in resource.data.members || (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds)) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberIds', 'updatedAt'])
+        ) ||
+        // 4. Joining via valid invite: adding self to members
+        (
+          request.resource.data.members.hasAny([request.auth.uid]) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberIds', 'updatedAt'])
+        )
+      );
+      allow delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.createdBy ||
+        request.auth.uid == resource.data.createdById ||
+        request.auth.uid in resource.data.admins ||
+        (resource.data.adminIds != null && request.auth.uid in resource.data.adminIds)
+      );
+    }
+
+    // Safe Group Invites (Stores public preview info for invite link resolution without exposing group IDs)
+    match /groupInvites/{inviteCode} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.createdBy == request.auth.uid ||
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.admins ||
+        (get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.adminIds != null && request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.adminIds)
+      );
+    }
+
+    // Veyra Status Updates
+    match /statuses/{statusId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewedBy'])
+      );
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
