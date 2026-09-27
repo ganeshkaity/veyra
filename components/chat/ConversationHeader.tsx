@@ -765,7 +765,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
                     setIsLocked(false);
                     setShowPasskeyModal(false);
                     await refreshProfile();
-                    showToast("Chat unlocked 🔓");
+                    showToast("Chat unlocked");
                   } else {
                     setPasskeyError(res.error || "Incorrect passkey");
                   }

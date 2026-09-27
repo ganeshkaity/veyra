@@ -557,6 +557,42 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     </div>
   );
 
+  const isExplicitSystem =
+    message.type === "system" ||
+    message.senderName === "Veyra System" ||
+    message.senderId === "system";
+
+  const systemPatterns = [
+    /created (the |this )?group/i,
+    /was made an admin by/i,
+    /made .+ an admin/i,
+    /is now an admin/i,
+    /was dismissed as an admin by/i,
+    /removed .+ as an admin/i,
+    /added .+/i,
+    /removed .+/i,
+    /left the group/i,
+    /joined using (an|this) invite link/i,
+    /joined via (an|this) invite link/i,
+    /joined using a group link/i,
+    /changed (this|the) group('s)? (settings|name|description|avatar|icon|subject)/i,
+    /changed this group's settings to allow/i,
+  ];
+
+  const isSystem =
+    isExplicitSystem ||
+    Boolean(isGroup && message.text && systemPatterns.some((pattern) => pattern.test(message.text)));
+
+  const isAnnouncement = Boolean(
+    isSystem &&
+    message.text &&
+    (message.text.includes("") ||
+     /changed (this|the) group('s)? settings/i.test(message.text))
+  );
+
+  const cleanSystemText = (message.text || "").replace(/^\s*/, "");
+  const hasReactions = !isSystem && Boolean(message.reactions && Object.keys(message.reactions).length > 0);
+
   return (
     <div
       id={`msg-${message.id}`}
@@ -564,6 +600,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       data-sender-id={message.senderId}
       data-status={message.status}
       className={`flex flex-col relative transition-all duration-300 rounded-2xl ${
+        hasReactions ? "z-20 mb-2.5" : "z-10"
+      } ${
         isCurrentSearchMatch
           ? "ring-2 ring-teal-500/80 bg-teal-500/10 p-1.5 -mx-1.5 shadow-md"
           : isSearchMatch
@@ -589,6 +627,15 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             <span className="text-[10px] opacity-70 ml-1 font-sans not-italic">
               {formatTime(message.createdAt)}
             </span>
+          </div>
+        </div>
+      ) : isSystem ? (
+        /* Group System Announcement / Event Message (WhatsApp style matching user screenshots) */
+        <div className="flex justify-center my-2 select-none px-4">
+          <div className="inline-flex items-center justify-center gap-2 max-w-[92%] sm:max-w-[85%] md:max-w-[75%] px-4 py-2 rounded-2xl bg-white/95 dark:bg-[#1E293B]/90 backdrop-blur-sm border border-slate-200/70 dark:border-slate-700/60 shadow-xs text-center">
+            <p className="text-[12px] sm:text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-300 font-normal">
+              {cleanSystemText}
+            </p>
           </div>
         </div>
       ) : (
@@ -830,7 +877,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                     e.stopPropagation();
                     setShowReactionDetailsModal(true);
                   }}
-                  className="absolute -bottom-2.5 right-2 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-sm text-xs select-none hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  className="absolute -bottom-2.5 right-2 z-30 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-sm text-xs select-none hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   title="View reactions"
                 >
                   <span className="flex items-center text-[12px] leading-none">

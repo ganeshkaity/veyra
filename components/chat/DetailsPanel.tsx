@@ -140,16 +140,23 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
 
   if (!isOpen) return null;
 
-  // Determine admin rights
+  // Determine admin rights and membership
+  const currentGroupMembers = groupDetails?.members || groupDetails?.memberIds || [];
+  const isNoLongerMember =
+    isGroup &&
+    ((groupDetails !== null && !currentGroupMembers.includes(currentUser.uid)) ||
+      Boolean(conversation.leftParticipantIds?.includes(currentUser.uid)));
   const currentGroupAdmins = groupDetails?.admins || groupDetails?.adminIds || [];
-  const isCurrentUserAdmin = isGroup && currentGroupAdmins.includes(currentUser.uid);
+  const isCurrentUserAdmin = isGroup && !isNoLongerMember && currentGroupAdmins.includes(currentUser.uid);
   const isCurrentUserCreator =
     isGroup &&
+    !isNoLongerMember &&
     (groupDetails?.createdBy === currentUser.uid || groupDetails?.createdById === currentUser.uid);
 
   // Member permissions
   const canAddMembers =
     isGroup &&
+    !isNoLongerMember &&
     (isCurrentUserAdmin || groupDetails?.settings?.whoCanAddMembers === "all");
 
   // Copy safe invite link
@@ -291,9 +298,25 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       try {
         await leaveGroup(groupDetails.id, currentUser);
         onClose();
-        onGroupDeletedOrLeft?.();
       } catch (err: any) {
         setActionError(err.message || "Failed to leave group.");
+      }
+    }
+  };
+
+  const handleDeleteGroupForMe = async () => {
+    const confirmed = await showConfirm("Are you sure you want to delete this group? This cannot be undone.", {
+      title: "Delete Group",
+      type: "error",
+      confirmText: "Delete",
+    });
+    if (confirmed) {
+      try {
+        await deleteConversation(conversation.id, currentUser.uid);
+        onClose();
+        onGroupDeletedOrLeft?.();
+      } catch (err: any) {
+        setActionError(err.message || "Failed to delete group.");
       }
     }
   };
@@ -342,7 +365,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
 
   // Participants in group
   const participantIds = isGroup
-    ? groupDetails?.members || groupDetails?.memberIds || conversation.participantIds
+    ? groupDetails?.members || groupDetails?.memberIds || conversation.participantIds.filter((id) => !conversation.leftParticipantIds?.includes(id))
     : [];
 
   return (
@@ -480,7 +503,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       </div>
 
       {/* GROUP SECTION: Safe Invite Mechanism */}
-      {isGroup && (
+      {isGroup && !isNoLongerMember && (
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -521,12 +544,13 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
 
       {/* GROUP SECTION: Group Settings (Admins Only) */}
       {isGroup && isCurrentUserAdmin && (
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
           <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
             <Icon name="tune" size="xs" className="text-[#2563EB]" />
             <span>Group Settings</span>
           </h5>
 
+          {/* Option 1: Who can add members */}
           <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-2">
             <div className="flex items-center justify-between">
               <div>
@@ -535,7 +559,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                 </span>
                 <span className="text-[11px] text-slate-400">
                   {groupDetails?.settings?.whoCanAddMembers === "all"
-                    ? "All members can add friends"
+                    ? "All members can add other members"
                     : "Only admins can add members"}
                 </span>
               </div>
@@ -546,29 +570,123 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                 type="button"
                 onClick={() =>
                   groupDetails &&
-                  updateGroupSettings(groupDetails.id, { whoCanAddMembers: "admins" }, currentUser)
+                  updateGroupSettings(groupDetails.id, { whoCanAddMembers: "all" }, currentUser)
                 }
-                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
-                  groupDetails?.settings?.whoCanAddMembers === "admins"
+                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  groupDetails?.settings?.whoCanAddMembers === "all"
                     ? "bg-[#2563EB] text-white shadow-sm"
-                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
-                Admins only
+                All members
               </button>
               <button
                 type="button"
                 onClick={() =>
                   groupDetails &&
-                  updateGroupSettings(groupDetails.id, { whoCanAddMembers: "all" }, currentUser)
+                  updateGroupSettings(groupDetails.id, { whoCanAddMembers: "admins" }, currentUser)
                 }
-                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
-                  groupDetails?.settings?.whoCanAddMembers === "all"
+                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  (groupDetails?.settings?.whoCanAddMembers ?? "admins") === "admins"
                     ? "bg-[#2563EB] text-white shadow-sm"
-                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                Admins only
+              </button>
+            </div>
+          </div>
+
+          {/* Option 2: Who can send messages */}
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                  Who can send messages
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {groupDetails?.settings?.whoCanSendMessages === "admins"
+                    ? "Only admins can send messages"
+                    : "All members can send messages"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  groupDetails &&
+                  updateGroupSettings(groupDetails.id, { whoCanSendMessages: "all" }, currentUser)
+                }
+                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  (groupDetails?.settings?.whoCanSendMessages ?? "all") === "all"
+                    ? "bg-[#2563EB] text-white shadow-sm"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
                 All members
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  groupDetails &&
+                  updateGroupSettings(groupDetails.id, { whoCanSendMessages: "admins" }, currentUser)
+                }
+                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  groupDetails?.settings?.whoCanSendMessages === "admins"
+                    ? "bg-[#2563EB] text-white shadow-sm"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                Admins only
+              </button>
+            </div>
+          </div>
+
+          {/* Option 3: Who can edit group info */}
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                  Who can edit group info
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {groupDetails?.settings?.whoCanEditGroupInfo === "all"
+                    ? "All members can edit name, icon and description"
+                    : "Only admins can edit name, icon and description"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  groupDetails &&
+                  updateGroupSettings(groupDetails.id, { whoCanEditGroupInfo: "all" }, currentUser)
+                }
+                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  groupDetails?.settings?.whoCanEditGroupInfo === "all"
+                    ? "bg-[#2563EB] text-white shadow-sm"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                All members
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  groupDetails &&
+                  updateGroupSettings(groupDetails.id, { whoCanEditGroupInfo: "admins" }, currentUser)
+                }
+                className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  (groupDetails?.settings?.whoCanEditGroupInfo ?? "admins") === "admins"
+                    ? "bg-[#2563EB] text-white shadow-sm"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                Admins only
               </button>
             </div>
           </div>
@@ -974,22 +1092,34 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       <div className="p-4 space-y-1 mt-auto">
         {isGroup ? (
           <>
-            <button
-              onClick={handleLeaveGroup}
-              className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-            >
-              <Icon name="logout" size="sm" />
-              <span>Leave Group</span>
-            </button>
-
-            {(isCurrentUserAdmin || isCurrentUserCreator) && (
+            {isNoLongerMember ? (
               <button
-                onClick={handleDeleteGroup}
-                className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                onClick={handleDeleteGroupForMe}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
               >
-                <Icon name="delete_forever" size="sm" />
+                <Icon name="delete" size="sm" />
                 <span>Delete Group</span>
               </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleLeaveGroup}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                >
+                  <Icon name="logout" size="sm" />
+                  <span>Leave Group</span>
+                </button>
+
+                {(isCurrentUserAdmin || isCurrentUserCreator) && (
+                  <button
+                    onClick={handleDeleteGroup}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                  >
+                    <Icon name="delete_forever" size="sm" />
+                    <span>Delete Group</span>
+                  </button>
+                )}
+              </>
             )}
           </>
         ) : (

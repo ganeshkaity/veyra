@@ -225,7 +225,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
   return (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0B1120] overflow-y-auto">
       {/* Top Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
+      <div className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           Status
         </h1>
@@ -315,7 +315,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
                   <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/85" />
 
                   {/* Top Avatar with Story Ring */}
-                  <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10">
+                  <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-[2]">
                     <div
                       className={`w-11 h-11 rounded-full p-[2px] ${
                         group.hasUnviewed
@@ -335,7 +335,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
 
                   {/* Middle Snippet text */}
                   {previewText && (
-                    <div className="absolute inset-x-2 top-16 bottom-11 flex items-center justify-center text-center z-10">
+                    <div className="absolute inset-x-2 top-16 bottom-11 flex items-center justify-center text-center z-[2]">
                       <p className="text-[11px] font-medium text-white/95 line-clamp-3 leading-snug drop-shadow-md">
                         {previewText}
                       </p>
@@ -343,7 +343,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
                   )}
 
                   {/* Bottom Contact Name */}
-                  <div className="absolute bottom-2.5 inset-x-2 text-center z-10">
+                  <div className="absolute bottom-2.5 inset-x-2 text-center z-[2]">
                     <p className="text-xs font-bold text-white truncate drop-shadow-md">
                       {group.userDisplayName}
                     </p>

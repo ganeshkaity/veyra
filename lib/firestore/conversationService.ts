@@ -21,6 +21,7 @@ import {
 import { db } from "../firebase/client";
 import { Conversation, ChatMessage, UserProfile, ConversationParticipant } from "@/types";
 import { getVeyraAiConversationId, VEYRA_AI_CONVERSATION_ID } from "../ai/aiService";
+import { stripMarkdown } from "../utils/markdownUtils";
 
 export function subscribeToConversations(
   uid: string,
@@ -168,9 +169,18 @@ export async function markSpecificMessagesAsRead(
       const data = convSnap.data() as Conversation;
       const currentUnread = data.unreadCount?.[uid] || 0;
       const newUnread = Math.max(0, currentUnread - messageIds.length);
-      batch.update(convRef, {
+      const convUpdates: Record<string, any> = {
         [`unreadCount.${uid}`]: newUnread,
-      });
+      };
+      if (
+        newUnread === 0 &&
+        data.lastMessage &&
+        data.lastMessage.senderId !== uid &&
+        data.lastMessage.status !== "read"
+      ) {
+        convUpdates["lastMessage.status"] = "read";
+      }
+      batch.update(convRef, convUpdates);
     }
 
     await batch.commit();
@@ -407,7 +417,7 @@ export async function sendMessage(
         ? "👾 GIF"
         : message.type === "sticker"
         ? `${message.text} Sticker`
-        : message.text;
+        : stripMarkdown(message.text);
 
     if (convSnap.exists()) {
       const convData = convSnap.data() as Conversation;
@@ -522,7 +532,7 @@ export async function editMessage(
       const convData = convSnap.data() as Conversation;
       if (convData.lastMessage && convData.lastMessage.timestamp === data.createdAt) {
         await updateDoc(convRef, {
-          "lastMessage.text": newText,
+          "lastMessage.text": stripMarkdown(newText),
           updatedAt: now,
         });
       }
@@ -1063,13 +1073,64 @@ export async function deleteConversation(
     }
   }
 
-  // 2. Entirely delete all messages from subcollection in Firestore
+  // 2. If this conversation is a group, check if there are other members remaining
+  let isGroupWithRemainingMembers = false;
+  try {
+    const groupRef = doc(db, "groups", resolvedConvId);
+    const groupSnap = await getDoc(groupRef);
+    if (groupSnap.exists()) {
+      const gData = groupSnap.data();
+      const otherMembers = (gData.members || gData.memberIds || []).filter((id: string) => id !== uid);
+      if (otherMembers.length > 0) {
+        isGroupWithRemainingMembers = true;
+      }
+    }
+  } catch (_) {}
+
+  if (isGroupWithRemainingMembers) {
+    // Only remove this user from the conversation and group doc, do not destroy the group or delete messages for others!
+    try {
+      const convRef = doc(db, "conversations", resolvedConvId);
+      await updateDoc(convRef, {
+        participantIds: arrayRemove(uid),
+        deletedBy: arrayUnion(uid),
+        leftParticipantIds: arrayRemove(uid),
+        updatedAt: Date.now(),
+      });
+    } catch (_) {}
+
+    try {
+      const groupRef = doc(db, "groups", resolvedConvId);
+      await updateDoc(groupRef, {
+        members: arrayRemove(uid),
+        memberIds: arrayRemove(uid),
+        leftMemberIds: arrayRemove(uid),
+        admins: arrayRemove(uid),
+        adminIds: arrayRemove(uid),
+        updatedAt: Date.now(),
+      });
+    } catch (_) {}
+
+    // Clean up user references in users/{uid}
+    if (uid) {
+      try {
+        const userRef = doc(db, "users", uid);
+        await updateDoc(userRef, {
+          lockedConversationIds: arrayRemove(resolvedConvId, conversationId),
+          favoriteConversationIds: arrayRemove(resolvedConvId, conversationId),
+        });
+      } catch (_) {}
+    }
+    return;
+  }
+
+  // 3. Entirely delete all messages from subcollection in Firestore
   await deleteAllConversationMessagesFromDb(resolvedConvId);
   if (conversationId !== resolvedConvId) {
     await deleteAllConversationMessagesFromDb(conversationId);
   }
 
-  // 3. Entirely delete the conversation document from Firestore
+  // 4. Entirely delete the conversation document from Firestore
   try {
     const convRef = doc(db, "conversations", resolvedConvId);
     await deleteDoc(convRef);
@@ -1084,7 +1145,7 @@ export async function deleteConversation(
     } catch (_) {}
   }
 
-  // 4. If this conversation was a group, delete the group doc and any invite code doc
+  // 5. If this conversation was a group, delete the group doc and any invite code doc
   try {
     const groupRef = doc(db, "groups", resolvedConvId);
     const groupSnap = await getDoc(groupRef);

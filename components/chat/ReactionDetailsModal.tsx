@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/ui/Icon";
 import { UserProfile } from "@/types";
 
@@ -29,8 +30,10 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<string>("all");
   const pushedHistoryRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  // Requirement 10: Back button / backward key handling intercepts popstate
+  // Requirement: Back button / backward key handling intercepts popstate
   // to close only the modal and not reload or close the chat
   useEffect(() => {
     if (!isOpen) {
@@ -38,7 +41,7 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
       return;
     }
 
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !pushedHistoryRef.current) {
       const stateObj = { ...(window.history.state || {}), modal: "reactionDetails" };
       window.history.pushState(stateObj, "", window.location.href);
       pushedHistoryRef.current = true;
@@ -48,14 +51,14 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
       e.preventDefault();
       e.stopImmediatePropagation();
       pushedHistoryRef.current = false;
-      onClose();
+      onCloseRef.current();
     };
 
     window.addEventListener("popstate", handlePopState, true);
     return () => {
       window.removeEventListener("popstate", handlePopState, true);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   // Escape key handler
   useEffect(() => {
@@ -70,11 +73,10 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
   }, [isOpen]);
 
   const handleClose = () => {
+    onCloseRef.current();
     if (pushedHistoryRef.current && typeof window !== "undefined") {
       pushedHistoryRef.current = false;
       window.history.back();
-    } else {
-      onClose();
     }
   };
 
@@ -112,12 +114,14 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
     return `${date.toLocaleDateString([], { month: "short", day: "numeric" })} at ${timeStr}`;
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center select-none animate-in fade-in duration-200">
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex flex-col justify-end sm:justify-center items-center select-none animate-in fade-in duration-200">
       {/* Backdrop */}
       <div
         onClick={handleClose}
-        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity cursor-pointer"
       />
 
       {/* Modal Container: Bottom sheet on mobile, centered modal on desktop */}
@@ -131,8 +135,17 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="p-1 -ml-1 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Back"
+              aria-label="Back"
+            >
+              <Icon name="arrow_back" size="xs" />
+            </button>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Reactions
             </h3>
@@ -146,6 +159,7 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
             onClick={handleClose}
             className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             title="Close"
+            aria-label="Close"
           >
             <Icon name="close" size="xs" />
           </button>
@@ -238,6 +252,7 @@ export const ReactionDetailsModal: React.FC<ReactionDetailsModalProps> = ({
           })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

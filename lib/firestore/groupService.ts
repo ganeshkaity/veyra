@@ -13,7 +13,7 @@ import {
   arrayRemove,
 } from "firebase/firestore";
 import { db } from "../firebase/client";
-import { GroupDetails, Conversation, UserProfile } from "@/types";
+import { GroupDetails, GroupSettings, Conversation, UserProfile } from "@/types";
 import { sendMessage } from "./conversationService";
 
 // Helper to generate secure, unguessable invite code (e.g. vyg_7a9f2e...)
@@ -66,6 +66,8 @@ export async function createGroup(
     memberIds,
     settings: {
       whoCanAddMembers: "admins",
+      whoCanSendMessages: "all",
+      whoCanEditGroupInfo: "admins",
     },
     inviteCode,
   };
@@ -110,9 +112,9 @@ export async function createGroup(
     participants: participantsRecord,
     lastMessage: {
       text: `${currentUser.displayName} created group "${name.trim()}"`,
-      senderId: currentUser.uid,
+      senderId: "system",
       timestamp: now,
-      type: "text",
+      type: "system",
     },
     createdAt: now,
     updatedAt: now,
@@ -124,10 +126,10 @@ export async function createGroup(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: currentUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
       text: `${currentUser.displayName} created the group "${name.trim()}".`,
-      type: "text",
+      type: "system",
     });
   } catch (err) {
     console.warn("Non-fatal: Failed to post group creation system message:", err);
@@ -217,12 +219,14 @@ export async function addMemberToGroup(
   await updateDoc(groupRef, {
     members: arrayUnion(member.uid),
     memberIds: arrayUnion(member.uid),
+    leftMemberIds: arrayRemove(member.uid),
     updatedAt: now,
   });
 
   const convRef = doc(db, "conversations", groupId);
   await updateDoc(convRef, {
     participantIds: arrayUnion(member.uid),
+    leftParticipantIds: arrayRemove(member.uid),
     [`participants.${member.uid}`]: {
       uid: member.uid,
       displayName: member.displayName,
@@ -236,10 +240,10 @@ export async function addMemberToGroup(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: requestingUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
-      text: `${requestingUser.displayName} added ${member.displayName}.`,
-      type: "text",
+      text: `${requestingUser.displayName} added ${member.displayName || member.username || "a member"}.`,
+      type: "system",
     });
   } catch (err) {
     console.warn("Non-fatal: Failed to send add member message:", err);
@@ -271,12 +275,13 @@ export async function removeMemberFromGroup(
     memberIds: arrayRemove(memberId),
     admins: arrayRemove(memberId),
     adminIds: arrayRemove(memberId),
+    leftMemberIds: arrayUnion(memberId),
     updatedAt: now,
   });
 
   const convRef = doc(db, "conversations", groupId);
   await updateDoc(convRef, {
-    participantIds: arrayRemove(memberId),
+    leftParticipantIds: arrayUnion(memberId),
     updatedAt: now,
   });
 
@@ -284,10 +289,10 @@ export async function removeMemberFromGroup(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: requestingUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
       text: `${requestingUser.displayName} removed ${memberName}.`,
-      type: "text",
+      type: "system",
     });
   } catch (err) {
     console.warn("Non-fatal: Failed to send remove member message:", err);
@@ -322,10 +327,10 @@ export async function promoteAdmin(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: requestingUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
       text: `${memberName} was made an admin by ${requestingUser.displayName}.`,
-      type: "text",
+      type: "system",
     });
   } catch (err) {
     console.warn("Non-fatal: Failed to send promote admin message:", err);
@@ -365,10 +370,10 @@ export async function demoteAdmin(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: requestingUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
       text: `${memberName} was dismissed as an admin by ${requestingUser.displayName}.`,
-      type: "text",
+      type: "system",
     });
   } catch (err) {
     console.warn("Non-fatal: Failed to send demote admin message:", err);
@@ -405,6 +410,7 @@ export async function leaveGroup(groupId: string, currentUser: UserProfile): Pro
       memberIds: members,
       admins,
       adminIds: admins,
+      leftMemberIds: arrayUnion(currentUser.uid),
       updatedAt: now,
     });
   }
@@ -415,17 +421,18 @@ export async function leaveGroup(groupId: string, currentUser: UserProfile): Pro
     if (members.length === 0) {
       await deleteDoc(convRef);
     } else {
+      // Do NOT remove currentUser.uid from participantIds so the group remains in their chat list!
       await updateDoc(convRef, {
-        participantIds: arrayRemove(currentUser.uid),
+        leftParticipantIds: arrayUnion(currentUser.uid),
         updatedAt: now,
       });
       // Post system leave message
       await sendMessage(groupId, {
         conversationId: groupId,
-        senderId: currentUser.uid,
+        senderId: "system",
         senderName: "Veyra System",
         text: `${currentUser.displayName} left the group.`,
-        type: "text",
+        type: "system",
       });
     }
   } catch (err) {
@@ -507,10 +514,10 @@ export async function editGroupName(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: requestingUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
       text: `${requestingUser.displayName} changed the group name to "${trimmed}".`,
-      type: "text",
+      type: "system",
     });
   } catch (_) {}
 }
@@ -586,7 +593,7 @@ export async function editGroupDescription(
 
 export async function updateGroupSettings(
   groupId: string,
-  settings: { whoCanAddMembers: "admins" | "all" },
+  settings: Partial<GroupSettings>,
   requestingUser: UserProfile
 ): Promise<void> {
   const groupRef = doc(db, "groups", groupId);
@@ -600,10 +607,50 @@ export async function updateGroupSettings(
     throw new Error("Only group admins can change group settings.");
   }
 
+  const prevSettings: GroupSettings = groupData.settings || {
+    whoCanAddMembers: "admins",
+    whoCanSendMessages: "all",
+    whoCanEditGroupInfo: "admins",
+  };
+  const newSettings: GroupSettings = {
+    whoCanAddMembers: settings.whoCanAddMembers || prevSettings.whoCanAddMembers || "admins",
+    whoCanSendMessages: settings.whoCanSendMessages || prevSettings.whoCanSendMessages || "all",
+    whoCanEditGroupInfo: settings.whoCanEditGroupInfo || prevSettings.whoCanEditGroupInfo || "admins",
+  };
+
   await updateDoc(groupRef, {
-    settings,
+    settings: newSettings,
     updatedAt: Date.now(),
   });
+
+  try {
+    let msgText = "";
+    if (settings.whoCanSendMessages && settings.whoCanSendMessages !== prevSettings.whoCanSendMessages) {
+      msgText = `${requestingUser.displayName} changed this group's settings to allow ${
+        settings.whoCanSendMessages === "all" ? "all members" : "only admins"
+      } to send messages to this group`;
+    } else if (settings.whoCanAddMembers && settings.whoCanAddMembers !== prevSettings.whoCanAddMembers) {
+      msgText = `${requestingUser.displayName} changed this group's settings to allow ${
+        settings.whoCanAddMembers === "all" ? "all members" : "only admins"
+      } to add members to this group`;
+    } else if (settings.whoCanEditGroupInfo && settings.whoCanEditGroupInfo !== prevSettings.whoCanEditGroupInfo) {
+      msgText = `${requestingUser.displayName} changed this group's settings to allow ${
+        settings.whoCanEditGroupInfo === "all" ? "all members" : "only admins"
+      } to edit this group's info`;
+    }
+
+    if (msgText) {
+      await sendMessage(groupId, {
+        conversationId: groupId,
+        senderId: "system",
+        senderName: "Veyra System",
+        text: msgText,
+        type: "system",
+      });
+    }
+  } catch (err) {
+    console.warn("Non-fatal: Failed to send group settings system message:", err);
+  }
 }
 
 export async function regenerateInviteCode(
@@ -693,12 +740,14 @@ export async function joinGroupByInviteCode(
   await updateDoc(groupRef, {
     members: arrayUnion(currentUser.uid),
     memberIds: arrayUnion(currentUser.uid),
+    leftMemberIds: arrayRemove(currentUser.uid),
     updatedAt: now,
   });
 
   const convRef = doc(db, "conversations", groupId);
   await updateDoc(convRef, {
     participantIds: arrayUnion(currentUser.uid),
+    leftParticipantIds: arrayRemove(currentUser.uid),
     [`participants.${currentUser.uid}`]: {
       uid: currentUser.uid,
       displayName: currentUser.displayName,
@@ -712,10 +761,10 @@ export async function joinGroupByInviteCode(
   try {
     await sendMessage(groupId, {
       conversationId: groupId,
-      senderId: currentUser.uid,
+      senderId: "system",
       senderName: "Veyra System",
       text: `${currentUser.displayName} joined using an invite link.`,
-      type: "text",
+      type: "system",
     });
   } catch (_) {}
 

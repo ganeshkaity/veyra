@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { Conversation, ChatMessage, UserProfile, UserPresence, TypingIndicator } from "@/types";
+import { Conversation, ChatMessage, UserProfile, UserPresence, TypingIndicator, GroupDetails } from "@/types";
+import { subscribeToGroup } from "@/lib/firestore/groupService";
 import { ConversationHeader } from "./ConversationHeader";
 import { MessageItem } from "./MessageItem";
 import { MessageInputBar } from "./MessageInputBar";
@@ -255,6 +256,32 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   // Determine other user's UID for 1-to-1 presence
   const otherUid = conversation.participantIds.find((id) => id !== currentUser.uid);
 
+  // Group details subscription to enforce group permissions (e.g. who can send messages)
+  const [groupDetails, setGroupDetails] = useState<GroupDetails | null>(null);
+  useEffect(() => {
+    if (conversation.type !== "group") {
+      setGroupDetails(null);
+      return;
+    }
+    const unsub = subscribeToGroup(conversation.id, (g) => {
+      setGroupDetails(g);
+    });
+    return () => unsub();
+  }, [conversation.id, conversation.type]);
+
+  const currentGroupMembers = groupDetails?.members || groupDetails?.memberIds || [];
+  const currentGroupAdmins = groupDetails?.admins || groupDetails?.adminIds || [];
+  const isCurrentUserAdmin = conversation.type === "group" && currentGroupAdmins.includes(currentUser.uid);
+  const isNoLongerMember =
+    conversation.type === "group" &&
+    ((groupDetails !== null && !currentGroupMembers.includes(currentUser.uid)) ||
+      Boolean(conversation.leftParticipantIds?.includes(currentUser.uid)));
+  const isOnlyAdminsCanSend =
+    conversation.type === "group" &&
+    !isNoLongerMember &&
+    groupDetails?.settings?.whoCanSendMessages === "admins" &&
+    !isCurrentUserAdmin;
+
   // Reset pagination and selection when conversation changes
   useEffect(() => {
     setMessageLimit(25);
@@ -294,7 +321,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
     return () => unsubscribe();
   }, [conversation.id, messageLimit, currentUser.uid]);
 
-  // Read receipts: Track messages actually viewed in viewport using IntersectionObserver
+  // Read receipts: Track messages actually viewed in viewport using IntersectionObserver and bounds checking
   const pendingReadSetRef = useRef<Set<string>>(new Set());
   const readFlushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -307,47 +334,119 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container || typeof IntersectionObserver === "undefined") return;
+    if (!container) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let hasNewReads = false;
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const msgId = entry.target.getAttribute("data-message-id");
-            const senderId = entry.target.getAttribute("data-sender-id");
-            const status = entry.target.getAttribute("data-status");
+    const checkVisibleUnread = () => {
+      const containerRect = container.getBoundingClientRect();
+      let hasNewReads = false;
+      const unreadElements = container.querySelectorAll("[data-message-id]");
 
-            if (msgId && senderId !== currentUser.uid && status !== "read") {
-              pendingReadSetRef.current.add(msgId);
-              hasNewReads = true;
-            }
+      unreadElements.forEach((el) => {
+        const senderId = el.getAttribute("data-sender-id");
+        const status = el.getAttribute("data-status");
+        const msgId = el.getAttribute("data-message-id");
+
+        if (
+          msgId &&
+          senderId !== currentUser.uid &&
+          status !== "read" &&
+          !pendingReadSetRef.current.has(msgId)
+        ) {
+          const rect = el.getBoundingClientRect();
+          const top = Math.max(rect.top, containerRect.top);
+          const bottom = Math.min(rect.bottom, containerRect.bottom);
+          const visibleHeight = Math.max(0, bottom - top);
+          const msgHeight = rect.height;
+          const containerHeight = containerRect.height || 500;
+
+          // If a message is too large to fit entirely in the viewport,
+          // it must still be marked as read as long as the user has viewed a significant part of it:
+          const isVisible =
+            visibleHeight > 0 &&
+            (visibleHeight >= Math.min(msgHeight * 0.35, 80) ||
+              (containerHeight > 0 && visibleHeight / containerHeight >= 0.2) ||
+              (msgHeight > 0 && visibleHeight / msgHeight >= 0.35));
+
+          if (isVisible) {
+            pendingReadSetRef.current.add(msgId);
+            hasNewReads = true;
           }
-        });
-
-        if (hasNewReads) {
-          if (readFlushTimeoutRef.current) clearTimeout(readFlushTimeoutRef.current);
-          readFlushTimeoutRef.current = setTimeout(flushPendingReads, 500);
         }
-      },
-      {
-        root: container,
-        threshold: 0.5, // Message must be at least 50% in view to count as read
-      }
-    );
+      });
 
-    // Observe unread message elements from other participants
-    const unreadElements = container.querySelectorAll("[data-message-id]");
-    unreadElements.forEach((el) => {
-      const senderId = el.getAttribute("data-sender-id");
-      const status = el.getAttribute("data-status");
-      if (senderId !== currentUser.uid && status !== "read") {
-        observer.observe(el);
+      if (hasNewReads) {
+        if (readFlushTimeoutRef.current) clearTimeout(readFlushTimeoutRef.current);
+        readFlushTimeoutRef.current = setTimeout(flushPendingReads, 350);
       }
-    });
+    };
+
+    // Run direct visible check slightly after layout settles
+    const initialCheckTimer = setTimeout(checkVisibleUnread, 150);
+
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          let hasNewReads = false;
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              const msgHeight = entry.boundingClientRect.height;
+              const containerHeight = container.clientHeight || 500;
+              const visibleHeight = entry.intersectionRect.height;
+
+              const isVisible =
+                visibleHeight > 0 &&
+                (visibleHeight >= Math.min(msgHeight * 0.35, 80) ||
+                  (containerHeight > 0 && visibleHeight / containerHeight >= 0.2) ||
+                  entry.intersectionRatio >= 0.35);
+
+              if (isVisible) {
+                const msgId = entry.target.getAttribute("data-message-id");
+                const senderId = entry.target.getAttribute("data-sender-id");
+                const status = entry.target.getAttribute("data-status");
+
+                if (
+                  msgId &&
+                  senderId !== currentUser.uid &&
+                  status !== "read" &&
+                  !pendingReadSetRef.current.has(msgId)
+                ) {
+                  pendingReadSetRef.current.add(msgId);
+                  hasNewReads = true;
+                  observer?.unobserve(entry.target);
+                }
+              }
+            }
+          });
+
+          if (hasNewReads) {
+            if (readFlushTimeoutRef.current) clearTimeout(readFlushTimeoutRef.current);
+            readFlushTimeoutRef.current = setTimeout(flushPendingReads, 350);
+          }
+        },
+        {
+          root: container,
+          threshold: [0, 0.1, 0.25, 0.5],
+        }
+      );
+
+      // Observe unread message elements from other participants
+      const unreadElements = container.querySelectorAll("[data-message-id]");
+      unreadElements.forEach((el) => {
+        const senderId = el.getAttribute("data-sender-id");
+        const status = el.getAttribute("data-status");
+        if (senderId !== currentUser.uid && status !== "read") {
+          observer?.observe(el);
+        }
+      });
+    }
+
+    container.addEventListener("scroll", checkVisibleUnread, { passive: true });
 
     return () => {
-      observer.disconnect();
+      clearTimeout(initialCheckTimer);
+      container.removeEventListener("scroll", checkVisibleUnread);
+      if (observer) observer.disconnect();
       if (readFlushTimeoutRef.current) {
         clearTimeout(readFlushTimeoutRef.current);
         flushPendingReads();
@@ -405,6 +504,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
   // Send regular text message
   const handleSendMessage = async (text: string, replyTo?: ChatMessage) => {
+    if (isNoLongerMember || isOnlyAdminsCanSend) return;
     try {
       const payload: Parameters<typeof sendMessage>[1] = {
         conversationId: conversation.id,
@@ -476,6 +576,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
     caption?: string,
     additionalUrls?: string[]
   ) => {
+    if (isNoLongerMember || isOnlyAdminsCanSend) return;
     try {
       const allUrls = additionalUrls && additionalUrls.length > 0 ? [imageUrl, ...additionalUrls] : [imageUrl];
       await sendMessage(conversation.id, {
@@ -497,6 +598,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
   // Send GIF
   const handleSendGif = async (gifUrl: string) => {
+    if (isNoLongerMember || isOnlyAdminsCanSend) return;
     try {
       await sendMessage(conversation.id, {
         conversationId: conversation.id,
@@ -514,6 +616,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
   // Send Sticker
   const handleSendSticker = async (stickerUrlOrEmoji: string) => {
+    if (isNoLongerMember || isOnlyAdminsCanSend) return;
     try {
       const isUrl = stickerUrlOrEmoji.startsWith("http");
       await sendMessage(conversation.id, {
@@ -974,18 +1077,28 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
               </button>
             </div>
           </div>
+        ) : isNoLongerMember ? (
+          <div className="h-16 px-4 flex items-center justify-center gap-2 bg-[#F0F2F5] dark:bg-[#1E293B] border-t border-slate-200/80 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 select-none">
+            <span>You are no longer a member</span>
+          </div>
+        ) : isOnlyAdminsCanSend ? (
+          <div className="h-16 px-4 flex items-center justify-center gap-2 bg-[#F0F2F5] dark:bg-[#1E293B] border-t border-slate-200/80 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 select-none">
+            <Icon name="lock" size="xs" />
+            <span>Only admins can send messages to this group</span>
+          </div>
         ) : (
           <MessageInputBar
             onSendMessage={handleSendMessage}
-            onTyping={(isTyping) =>
+            onTyping={(isTyping) => {
+              if (isNoLongerMember) return;
               setTypingStatus(
                 conversation.id,
                 currentUser.uid,
                 currentUser.username,
                 currentUser.displayName,
                 isTyping
-              )
-            }
+              );
+            }}
             onOpenMediaModal={(file) => {
               setMediaFileToUpload(file || null);
               setComingSoonInfo(null);

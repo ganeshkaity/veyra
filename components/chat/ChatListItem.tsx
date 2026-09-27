@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
 import { MessageStatusTick } from "./MessageStatusTick";
 import { subscribeToUserPresence, subscribeToTyping } from "@/lib/realtime/presenceService";
+import { stripMarkdown } from "@/lib/utils/markdownUtils";
 
 interface ChatListItemProps {
   conversation: Conversation;
@@ -349,7 +350,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
 
             const snippet = isCleared
               ? "No messages yet"
-              : conversation.lastMessage?.text || (isAi ? "Always here to help you." : "No messages yet");
+              : conversation.lastMessage?.text
+              ? stripMarkdown(conversation.lastMessage.text)
+              : isAi
+              ? "Always here to help you."
+              : "No messages yet";
 
             return (
               <p

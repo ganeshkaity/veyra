@@ -1755,7 +1755,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   >
                     <Icon name="delete" size="sm" className="text-slate-400 dark:text-slate-400 group-hover:text-rose-500 transition-colors" />
                     <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200 group-hover:text-rose-600 dark:group-hover:text-rose-400">
-                      Delete chat
+                      {contextMenu.conversation.type === "group" ? "Delete group" : "Delete chat"}
                     </span>
                   </button>
                 )}
@@ -1896,10 +1896,10 @@ export const ChatList: React.FC<ChatListProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-sm bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-5 animate-in zoom-in-95 duration-150">
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
-              Delete this chat?
+              {showDeleteConfirm.type === "group" ? "Delete group?" : "Delete chat?"}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
-              Are you sure you want to delete this chat with <span className="font-semibold text-slate-700 dark:text-slate-200">{getConvName(showDeleteConfirm)}</span>? This action cannot be undone.
+              Are you sure you want to delete this {showDeleteConfirm.type === "group" ? "group" : "chat"} with <span className="font-semibold text-slate-700 dark:text-slate-200">{getConvName(showDeleteConfirm)}</span>? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2.5">
               <button
@@ -1917,11 +1917,11 @@ export const ChatList: React.FC<ChatListProps> = ({
                   if (selectedConversationId === target.id) {
                     onSelectConversation("");
                   }
-                  showToast("Chat deleted");
+                  showToast(target.type === "group" ? "Group deleted" : "Chat deleted");
                 }}
                 className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm cursor-pointer"
               >
-                Delete chat
+                {showDeleteConfirm.type === "group" ? "Delete group" : "Delete chat"}
               </button>
             </div>
           </div>

@@ -33,7 +33,7 @@ export interface UserProfile {
   conversationListMemberships?: Record<string, string[]>;
 }
 
-export type MessageType = 'text' | 'image' | 'gif' | 'sticker';
+export type MessageType = 'text' | 'image' | 'gif' | 'sticker' | 'system';
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
 
 export interface MessageReplyInfo {
@@ -105,6 +105,7 @@ export interface Conversation {
   archivedBy?: string[];
   pinnedBy?: string[];
   deletedBy?: string[];
+  leftParticipantIds?: string[];
   clearedAt?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
@@ -112,6 +113,8 @@ export interface Conversation {
 
 export interface GroupSettings {
   whoCanAddMembers: 'admins' | 'all';
+  whoCanSendMessages?: 'admins' | 'all';
+  whoCanEditGroupInfo?: 'admins' | 'all';
 }
 
 export interface GroupDetails {
@@ -128,6 +131,7 @@ export interface GroupDetails {
   adminIds?: string[];
   members: string[];
   memberIds?: string[];
+  leftMemberIds?: string[];
   settings: GroupSettings;
   inviteCode?: string;
   permissions?: {

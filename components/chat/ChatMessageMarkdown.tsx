@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Icon } from "@/components/ui/Icon";
 
 export type EntityType = "url" | "email" | "phone";
@@ -466,7 +467,85 @@ export const ChatMessageMarkdown: React.FC<ChatMessageMarkdownProps> = ({
           hr() {
             return <hr className="my-2 border-current opacity-20" />;
           },
+
+          // GFM Tables
+          table({ children }) {
+            return (
+              <div
+                className={`my-2.5 overflow-x-auto rounded-xl border max-w-full shadow-xs ${
+                  isMe
+                    ? "bg-black/5 dark:bg-black/25 border-black/10 dark:border-white/10"
+                    : "bg-white/80 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-700/80"
+                }`}
+              >
+                <table className="w-full text-left text-xs border-collapse">
+                  {children}
+                </table>
+              </div>
+            );
+          },
+
+          thead({ children }) {
+            return (
+              <thead
+                className={`border-b font-semibold ${
+                  isMe
+                    ? "bg-black/5 dark:bg-white/10 border-black/10 dark:border-white/10 text-inherit"
+                    : "bg-slate-100/90 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                }`}
+              >
+                {children}
+              </thead>
+            );
+          },
+
+          tbody({ children }) {
+            return (
+              <tbody
+                className={`divide-y ${
+                  isMe
+                    ? "divide-black/5 dark:divide-white/5"
+                    : "divide-slate-200/60 dark:divide-slate-700/60"
+                }`}
+              >
+                {children}
+              </tbody>
+            );
+          },
+
+          tr({ children }) {
+            return (
+              <tr className="hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors">
+                {children}
+              </tr>
+            );
+          },
+
+          th({ children, style }) {
+            return (
+              <th
+                style={style}
+                className="px-3 py-2 font-bold text-xs tracking-tight whitespace-nowrap select-text"
+              >
+                {enhanceChildrenWithEntities(children, isMe, handleEntityClick)}
+              </th>
+            );
+          },
+
+          td({ children, style }) {
+            return (
+              <td
+                style={style}
+                className={`px-3 py-2 text-xs select-text ${
+                  isMe ? "text-inherit" : "text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                {enhanceChildrenWithEntities(children, isMe, handleEntityClick)}
+              </td>
+            );
+          },
         }}
+        remarkPlugins={[remarkGfm]}
       >
         {content}
       </ReactMarkdown>
