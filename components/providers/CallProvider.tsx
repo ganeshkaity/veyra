@@ -136,8 +136,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,   // Essential acoustic echo cancellation
-          noiseSuppression: false,  // Remove heavy noise gate filter that clips voice and creates lag
-          autoGainControl: false,   // Remove gain pumping filter that delays voice
+          noiseSuppression: true,  // Remove heavy noise gate filter that clips voice and creates lag
+          autoGainControl: true,   // Remove gain pumping filter that delays voice
           channelCount: 1,
         },
         video: false,
@@ -158,8 +158,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           {
             audio: {
               echoCancellation: true,
-              noiseSuppression: false,
-              autoGainControl: false,
+              noiseSuppression: true,
+              autoGainControl: true,
             },
             video: false,
           },

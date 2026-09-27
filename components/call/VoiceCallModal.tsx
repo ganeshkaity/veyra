@@ -70,7 +70,7 @@ export const VoiceCallModal: React.FC = () => {
         statusColorClass = "text-teal-400 animate-pulse font-medium";
         break;
       case "connecting":
-        statusText = "Connecting secure peer link...";
+        statusText = "Connecting...";
         statusColorClass = "text-blue-400 animate-pulse font-medium";
         break;
       case "connected":
@@ -131,12 +131,6 @@ export const VoiceCallModal: React.FC = () => {
       <div className="w-full max-w-sm sm:max-w-md bg-gradient-to-b from-slate-900/95 to-slate-950/98 border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/80 flex flex-col items-center text-center overflow-hidden relative backdrop-blur-2xl">
         {/* Subtle decorative glow */}
         <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-blue-500/10 via-teal-500/5 to-transparent pointer-events-none" />
-
-        {/* Header Tag */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-medium text-slate-300 mb-6 select-none">
-          <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-          <span>Veyra Voice Call • WebRTC Audio</span>
-        </div>
 
         {/* Center Avatar with Pulsing Rings */}
         <div className="relative my-4 flex items-center justify-center">
