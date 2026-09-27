@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useCall } from "@/components/providers/CallProvider";
 import { Conversation, ChatMessage, UserProfile, UserPresence, TypingIndicator } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
@@ -63,6 +64,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
 }) => {
   const router = useRouter();
   const { refreshProfile } = useAuth();
+  const { startCall } = useCall();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -124,6 +126,31 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   } else {
     statusText = formatLastSeen(presence);
   }
+
+  // Handle 1-to-1 Voice Call action
+  const handleVoiceCallClick = async () => {
+    if (isGroup) {
+      showToast("Voice calling is currently supported in 1-to-1 direct chats.");
+      return;
+    }
+
+    const otherId = conversation.participantIds.find((id) => id !== currentUser.uid);
+    if (!otherId) {
+      showToast("Unable to start call: recipient not found.");
+      return;
+    }
+
+    try {
+      await startCall({
+        uid: otherId,
+        displayName: name,
+        avatarUrl: avatarUrl,
+        conversationId: conversation.id,
+      });
+    } catch (err: any) {
+      showToast(err.message || "Failed to initiate call.");
+    }
+  };
 
   // Action handlers
   const handleExportChat = () => {
@@ -301,10 +328,10 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
       <div className="relative flex items-center gap-1">
         {!isAi && (
           <button
-            onClick={() => showToast("Voice calling is coming soon!")}
-            title="Voice Call"
+            onClick={handleVoiceCallClick}
+            title={isGroup ? "Voice Call (Direct Chats)" : "Voice Call"}
             aria-label="Voice Call"
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <Icon name="call" size="md" />
           </button>

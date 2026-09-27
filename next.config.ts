@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
+    dangerouslyAllowLocalIP: true,
     remotePatterns: [
       {
         protocol: "https",
@@ -35,9 +36,17 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
+      {
+        protocol: "https",
+        hostname: "veyra-app.vercel.app",
+      },
+      {
+        protocol: "https",
+        hostname: "**.vercel.app",
+      },
     ],
   },
-  allowedDevOrigins: ["10.186.234.222"],
+  allowedDevOrigins: ["10.186.234.222", "veyra-app.vercel.app"],
   devIndicators: false,
   async rewrites() {
     return [

@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { AlertModalProvider } from "@/components/providers/AlertModalProvider";
 import { PwaProvider } from "@/components/providers/PwaProvider";
+import { CallProvider } from "@/components/providers/CallProvider";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -90,7 +91,9 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <AlertModalProvider>
-              <PwaProvider>{children}</PwaProvider>
+              <PwaProvider>
+                <CallProvider>{children}</CallProvider>
+              </PwaProvider>
             </AlertModalProvider>
           </AuthProvider>
         </ThemeProvider>

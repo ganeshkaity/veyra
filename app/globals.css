@@ -250,6 +250,40 @@ em-emoji-picker {
   border: none !important;
   font-family: inherit !important;
 }
+
+/* Voice Call Animations */
+@keyframes call-pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+@keyframes call-wave-bar {
+  0%, 100% {
+    height: 4px;
+  }
+  50% {
+    height: 22px;
+  }
+}
+
+.animate-call-ring-1 {
+  animation: call-pulse-ring 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+.animate-call-ring-2 {
+  animation: call-pulse-ring 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) 0.8s infinite;
+}
+
 .test{
   color: #ffffff;
 }

@@ -13,6 +13,20 @@
           ".write": "auth != null && auth.uid === $uid"
         }
       }
+    },
+    "users": {
+      "$uid": {
+        "incomingCall": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null"
+        }
+      }
+    },
+    "calls": {
+      "$callId": {
+        ".read": "auth != null && (data.child('callerId').val() === auth.uid || data.child('receiverId').val() === auth.uid)",
+        ".write": "auth != null && (!data.exists() || data.child('callerId').val() === auth.uid || data.child('receiverId').val() === auth.uid || newData.child('callerId').val() === auth.uid)"
+      }
     }
   }
 }
