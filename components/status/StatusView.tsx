@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { UserProfile, StatusItem, UserStatusGroup } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
@@ -15,6 +15,55 @@ interface StatusViewProps {
   currentUser: UserProfile;
 }
 
+interface ChannelItem {
+  id: string;
+  name: string;
+  avatar: string;
+  verified: boolean;
+  followers: string;
+  category: string;
+  description: string;
+}
+
+const CHANNELS: ChannelItem[] = [
+  {
+    id: "whatsapp",
+    name: "WhatsApp",
+    avatar: "https://images.unsplash.com/photo-1614680376593-902f749f7ffc?w=120&auto=format&fit=crop&q=80",
+    verified: true,
+    followers: "152M followers",
+    category: "News & Media",
+    description: "The official WhatsApp Channel. Stay up to date with new features and tips.",
+  },
+  {
+    id: "realmadrid",
+    name: "Real Madrid C.F.",
+    avatar: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=120&auto=format&fit=crop&q=80",
+    verified: true,
+    followers: "54.8M followers",
+    category: "Sports team",
+    description: "Welcome to the official Real Madrid Channel! #HalaMadrid",
+  },
+  {
+    id: "tech_radar",
+    name: "Tech Radar",
+    avatar: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=120&auto=format&fit=crop&q=80",
+    verified: true,
+    followers: "12.3M followers",
+    category: "Tech & Gadgets",
+    description: "Daily technology news, phone releases, and AI breakthroughs.",
+  },
+  {
+    id: "natgeo",
+    name: "National Geographic",
+    avatar: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120&auto=format&fit=crop&q=80",
+    verified: true,
+    followers: "28.1M followers",
+    category: "Nature & Wildlife",
+    description: "Inspiring people to care about the planet since 1888.",
+  },
+];
+
 export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
   const [myStatuses, setMyStatuses] = useState<StatusItem[]>([]);
   const [otherGroups, setOtherGroups] = useState<UserStatusGroup[]>([]);
@@ -25,9 +74,23 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isVideoComingSoonOpen, setIsVideoComingSoonOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isExploreChannelsOpen, setIsExploreChannelsOpen] = useState(false);
+  const [followedChannelIds, setFollowedChannelIds] = useState<Set<string>>(new Set());
 
   // Active status story player state
   const [viewingStatuses, setViewingStatuses] = useState<StatusItem[] | null>(null);
+
+  // Refs for capture-phase back key interception
+  const isTextModalOpenRef = useRef(false);
+  const isImageModalOpenRef = useRef(false);
+
+  useEffect(() => {
+    isTextModalOpenRef.current = isTextModalOpen;
+  }, [isTextModalOpen]);
+
+  useEffect(() => {
+    isImageModalOpenRef.current = isImageModalOpen;
+  }, [isImageModalOpen]);
 
   // Open status story player with zero reload & browser history entry
   const handleOpenStatusViewer = (statuses: StatusItem[], viewKey: string = "my") => {
@@ -70,7 +133,21 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
 
   // Listen for browser / Android Back button
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (e: PopStateEvent) => {
+      // If text or image status modal was open, back key must only close it!
+      if (isTextModalOpenRef.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setIsTextModalOpen(false);
+        return;
+      }
+      if (isImageModalOpenRef.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setIsImageModalOpen(false);
+        return;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const viewParam = params.get("view");
 
@@ -87,8 +164,8 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
       }
     };
 
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("popstate", handlePopState, true);
+    return () => window.removeEventListener("popstate", handlePopState, true);
   }, [myStatuses, otherGroups]);
 
   // Check for initial ?view= query param on mount
@@ -117,9 +194,6 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
     }
   }, [isLoading, myStatuses, otherGroups]);
 
-  // Viewed updates collapse toggle
-  const [showViewedUpdates, setShowViewedUpdates] = useState(true);
-
   // Realtime subscription to active statuses
   useEffect(() => {
     setIsLoading(true);
@@ -139,169 +213,117 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
     return () => unsubscribe();
   }, [currentUser.uid]);
 
-  // Separate recent unviewed vs viewed groups
-  const recentGroups = otherGroups.filter((g) => g.hasUnviewed);
-  const viewedGroups = otherGroups.filter((g) => !g.hasUnviewed);
-
-  // Helper formatting for timestamps
-  const formatTime = (ts: number) => {
-    const now = Date.now();
-    const diffHours = (now - ts) / (1000 * 60 * 60);
-    if (diffHours < 1) {
-      const mins = Math.max(1, Math.floor((now - ts) / (1000 * 60)));
-      return `${mins}m ago`;
-    }
-    return new Date(ts).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
+  const toggleFollowChannel = (channelId: string) => {
+    setFollowedChannelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(channelId)) next.delete(channelId);
+      else next.add(channelId);
+      return next;
     });
   };
 
-  const getExpirationBadge = (expiresAt: number) => {
-    const diffMs = expiresAt - Date.now();
-    if (diffMs <= 0) return "Expired";
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (hours > 0) return `${hours}h left`;
-    const mins = Math.max(1, Math.floor(diffMs / (1000 * 60)));
-    return `${mins}m left`;
-  };
-
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F8FAFC] dark:bg-[#0B1120] overflow-y-auto">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0B1120] overflow-y-auto">
       {/* Top Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3.5 bg-white dark:bg-[#0F172A] border-b border-slate-200/80 dark:border-slate-800">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+          Status
+        </h1>
         <button
           onClick={() => setIsPrivacyModalOpen(true)}
-          className="text-xs font-semibold text-[#2563EB] dark:text-[#14B8A6] hover:opacity-80 transition-opacity"
+          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
         >
           Privacy
         </button>
-        <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex-1 text-center pr-6">
-          Status
-        </h2>
       </div>
 
-      <div className="p-4 max-w-lg mx-auto w-full space-y-6 pb-24 md:pb-8">
+      <div className="p-4 sm:p-6 max-w-2xl mx-auto w-full space-y-8 pb-28 md:pb-12">
         {/* ======================================================== */}
-        {/* MY STATUS CARD (matches reference UI media_1790281940732.png) */}
+        {/* STATUS CARDS CAROUSEL (Image 1 reference layout) */}
         {/* ======================================================== */}
-        <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <div
-            onClick={() => {
-              if (myStatuses.length > 0) {
-                handleOpenStatusViewer(myStatuses, "my");
-              } else {
-                setIsTextModalOpen(true);
-              }
-            }}
-            className="flex items-center gap-3.5 flex-1 min-w-0 cursor-pointer group"
-          >
-            <div className="relative flex-shrink-0 flex items-center justify-center">
-              {myStatuses.length > 0 ? (
-                /* Segmented or gradient story ring */
-                <div className="w-[62px] h-[62px] rounded-full p-[2.5px] bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] flex items-center justify-center flex-shrink-0 shadow-xs">
-                  <div className="w-full h-full rounded-full p-[2px] bg-white dark:bg-[#0F172A] flex items-center justify-center">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 overflow-x-auto pb-3 pt-1 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+            {/* Card 1: Add status (Image 1 style) */}
+            <div
+              onClick={() => {
+                if (myStatuses.length > 0) {
+                  handleOpenStatusViewer(myStatuses, "my");
+                } else {
+                  setIsTextModalOpen(true);
+                }
+              }}
+              className="w-[105px] h-[180px] rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-[#F1F5F9]/70 dark:bg-[#0F172A] flex flex-col items-center justify-between p-3 shadow-xs hover:shadow-md transition-all flex-shrink-0 cursor-pointer select-none active:scale-[0.98] group"
+            >
+              <div className="pt-2 flex flex-col items-center">
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
                     <Avatar
                       name={currentUser.displayName}
                       src={currentUser.avatarUrl}
                       size="lg"
                     />
                   </div>
-                </div>
-              ) : (
-                <div className="relative w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Avatar
-                    name={currentUser.displayName}
-                    src={currentUser.avatarUrl}
-                    size="lg"
-                  />
-                  <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-[#2563EB] text-white flex items-center justify-center border-2 border-white dark:border-[#0F172A] shadow-xs">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTextModalOpen(true);
+                    }}
+                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#10B981] hover:bg-emerald-600 text-white flex items-center justify-center border-2 border-white dark:border-[#0F172A] shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+                    title="Add status"
+                  >
                     <Icon name="add" size="xs" />
-                  </span>
+                  </button>
                 </div>
-              )}
+              </div>
+
+              <div className="w-full text-center pb-2">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight block">
+                  Add
+                </span>
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight block">
+                  status
+                </span>
+              </div>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate group-hover:text-[#2563EB] dark:group-hover:text-[#14B8A6] transition-colors">
-                My Status
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                {myStatuses.length > 0 ? (
-                  <span className="flex items-center gap-1.5">
-                    <span>{myStatuses.length} active update{myStatuses.length > 1 ? "s" : ""}</span>
-                    <span>•</span>
-                    <span className="text-teal-600 dark:text-teal-400 font-medium">
-                      {getExpirationBadge(myStatuses[0].expiresAt)}
-                    </span>
-                  </span>
-                ) : (
-                  "Add to my status"
-                )}
-              </p>
-            </div>
-          </div>
+            {/* Other Contacts Story Cards (Image 1 style) */}
+            {otherGroups.map((group) => {
+              const latestStatus = group.statuses[0];
+              const isImage = latestStatus?.type === "image" && Boolean(latestStatus?.mediaUrl);
+              const previewText = latestStatus?.content || "";
 
-          {/* Quick Create Buttons: Photo & Text & Video */}
-          <div className="flex items-center gap-1.5 flex-shrink-0 pl-2">
-            <button
-              type="button"
-              onClick={() => setIsImageModalOpen(true)}
-              className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-[#2563EB] dark:text-[#60A5FA] hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors active:scale-95"
-              title="Add photo status"
-            >
-              <Icon name="photo_camera" size="sm" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsTextModalOpen(true)}
-              className="p-2 rounded-xl bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-[#14B8A6] hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors active:scale-95"
-              title="Add text status"
-            >
-              <Icon name="edit" size="sm" />
-            </button>
-          </div>
-        </div>
-
-        {/* Loading Skeletons */}
-        {isLoading && (
-          <div className="space-y-3">
-            <div className="h-4 w-28 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 space-y-3">
-              {[1, 2].map((i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 w-32 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
-                    <div className="h-2.5 w-20 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* RECENT UPDATES (UNVIEWED) */}
-        {/* ======================================================== */}
-        {!isLoading && recentGroups.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
-              Recent Updates ({recentGroups.length})
-            </h4>
-
-            <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] overflow-hidden shadow-xs divide-y divide-slate-100 dark:divide-slate-800">
-              {recentGroups.map((group) => (
-                <button
+              return (
+                <div
                   key={group.userId}
-                  type="button"
                   onClick={() => handleOpenStatusViewer(group.statuses, group.userId)}
-                  className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  className="w-[105px] h-[180px] rounded-3xl overflow-hidden relative flex-shrink-0 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all select-none group"
+                  style={{
+                    backgroundColor: isImage ? "#0F172A" : (latestStatus?.backgroundColor || "#7C3AED"),
+                  }}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Vibrant ring indicating unviewed status */}
-                    <div className="w-[50px] h-[50px] rounded-full p-[2px] bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] flex items-center justify-center flex-shrink-0 shadow-xs">
-                      <div className="w-full h-full rounded-full p-[1.5px] bg-white dark:bg-[#0F172A] flex items-center justify-center">
+                  {/* Image Background */}
+                  {isImage && (
+                    <img
+                      src={latestStatus.mediaUrl}
+                      alt={group.userDisplayName}
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  )}
+
+                  {/* Gradient Overlay for Text Visibility */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/85" />
+
+                  {/* Top Avatar with Story Ring */}
+                  <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10">
+                    <div
+                      className={`w-11 h-11 rounded-full p-[2px] ${
+                        group.hasUnviewed
+                          ? "bg-gradient-to-tr from-[#2563EB] to-[#14B8A6]"
+                          : "border-2 border-white/80"
+                      } flex items-center justify-center shadow-md`}
+                    >
+                      <div className="w-full h-full rounded-full overflow-hidden bg-slate-900">
                         <Avatar
                           name={group.userDisplayName}
                           src={group.userAvatarUrl}
@@ -309,96 +331,111 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
                         />
                       </div>
                     </div>
-                    <div className="min-w-0">
-                      <h5 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                        {group.userDisplayName}
-                      </h5>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5 flex items-center gap-1.5">
-                        <span>{formatTime(group.latestTimestamp)}</span>
-                        <span>•</span>
-                        <span className="text-[#2563EB] dark:text-[#14B8A6] font-medium">
-                          {getExpirationBadge(group.statuses[0].expiresAt)}
-                        </span>
+                  </div>
+
+                  {/* Middle Snippet text */}
+                  {previewText && (
+                    <div className="absolute inset-x-2 top-16 bottom-11 flex items-center justify-center text-center z-10">
+                      <p className="text-[11px] font-medium text-white/95 line-clamp-3 leading-snug drop-shadow-md">
+                        {previewText}
                       </p>
                     </div>
+                  )}
+
+                  {/* Bottom Contact Name */}
+                  <div className="absolute bottom-2.5 inset-x-2 text-center z-10">
+                    <p className="text-xs font-bold text-white truncate drop-shadow-md">
+                      {group.userDisplayName}
+                    </p>
                   </div>
-                  <Icon name="chevron_right" size="sm" className="text-slate-400 flex-shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+                </div>
+              );
+            })}
 
-        {/* ======================================================== */}
-        {/* VIEWED UPDATES */}
-        {/* ======================================================== */}
-        {!isLoading && viewedGroups.length > 0 && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setShowViewedUpdates(!showViewedUpdates)}
-              className="flex items-center justify-between w-full text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-            >
-              <span>Viewed Updates ({viewedGroups.length})</span>
-              <Icon
-                name={showViewedUpdates ? "expand_less" : "expand_more"}
-                size="xs"
-              />
-            </button>
-
-            {showViewedUpdates && (
-              <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] overflow-hidden shadow-xs divide-y divide-slate-100 dark:divide-slate-800">
-                {viewedGroups.map((group) => (
-                  <button
-                    key={group.userId}
-                    type="button"
-                    onClick={() => handleOpenStatusViewer(group.statuses, group.userId)}
-                    className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors opacity-80 hover:opacity-100"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Subtle ring for viewed status */}
-                      <div className="w-[50px] h-[50px] rounded-full p-[2px] border-2 border-slate-300/80 dark:border-slate-700 flex items-center justify-center flex-shrink-0">
-                        <div className="w-full h-full rounded-full p-[1.5px] bg-white dark:bg-[#0F172A] flex items-center justify-center">
-                          <Avatar
-                            name={group.userDisplayName}
-                            src={group.userAvatarUrl}
-                            size="md"
-                          />
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <h5 className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
-                          {group.userDisplayName}
-                        </h5>
-                        <p className="text-xs text-slate-400 truncate mt-0.5">
-                          {formatTime(group.latestTimestamp)}
-                        </p>
-                      </div>
-                    </div>
-                    <Icon name="chevron_right" size="sm" className="text-slate-400 flex-shrink-0" />
-                  </button>
-                ))}
+            {/* Empty placeholder card when no other statuses exist */}
+            {!isLoading && otherGroups.length === 0 && (
+              <div
+                onClick={() => setIsImageModalOpen(true)}
+                className="w-[105px] h-[180px] rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col items-center justify-center p-3 text-center flex-shrink-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] flex items-center justify-center mb-2">
+                  <Icon name="photo_camera" size="sm" />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">
+                  Share Photo
+                </span>
               </div>
             )}
           </div>
-        )}
+        </div>
 
         {/* ======================================================== */}
-        {/* EMPTY STATE (matches reference UI media_1790281940732.png) */}
+        {/* CHANNELS SECTION (Image 1 style with Explore button) */}
         {/* ======================================================== */}
-        {!isLoading && otherGroups.length === 0 && (
-          <div className="p-8 text-center rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A]/50 space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
-              <Icon name="donut_large" size="md" />
-            </div>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-              No recent updates to show right now.
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto leading-relaxed">
-              When your contacts share photos or thoughts, their updates will appear here and automatically disappear after 24 hours.
-            </p>
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Channels
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsExploreChannelsOpen(true)}
+              className="px-5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100 transition-colors active:scale-95 shadow-xs"
+            >
+              Explore
+            </button>
           </div>
-        )}
+
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Stay updated on topics you care about. Find channels to follow below.
+          </p>
+
+          {/* Channels List Cards */}
+          <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden shadow-xs">
+            {CHANNELS.map((ch) => {
+              const isFollowed = followedChannelIds.has(ch.id);
+              return (
+                <div
+                  key={ch.id}
+                  className="flex items-center justify-between p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0 pr-3">
+                    <img
+                      src={ch.avatar}
+                      alt={ch.name}
+                      className="w-12 h-12 rounded-full object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                          {ch.name}
+                        </h4>
+                        {ch.verified && (
+                          <span className="text-[#2563EB] text-xs">✓</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {ch.followers} • {ch.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => toggleFollowChannel(ch.id)}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all flex-shrink-0 active:scale-95 ${
+                      isFollowed
+                        ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                        : "bg-[#2563EB] text-white hover:bg-blue-700 shadow-xs"
+                    }`}
+                  >
+                    {isFollowed ? "Following" : "Follow"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* ======================================================== */}
@@ -418,11 +455,16 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
         />
       )}
 
-      {/* Create Text Status Modal */}
+      {/* Create Text Status Modal (Matching Image 2) */}
       <CreateTextStatusModal
         isOpen={isTextModalOpen}
         onClose={() => setIsTextModalOpen(false)}
         currentUser={currentUser}
+        onSwitchToPhoto={() => {
+          setIsTextModalOpen(false);
+          setIsImageModalOpen(true);
+        }}
+        onSwitchToVideo={() => setIsVideoComingSoonOpen(true)}
       />
 
       {/* Create Image Status Modal */}
@@ -431,6 +473,59 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
         onClose={() => setIsImageModalOpen(false)}
         currentUser={currentUser}
       />
+
+      {/* Explore Channels Modal */}
+      <Modal
+        isOpen={isExploreChannelsOpen}
+        onClose={() => setIsExploreChannelsOpen(false)}
+        title="Explore Channels"
+        maxWidth="md"
+      >
+        <div className="space-y-3 p-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Browse verified channels from news, sports, entertainment, and organizations.
+          </p>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+            {CHANNELS.map((ch) => {
+              const isFollowed = followedChannelIds.has(ch.id);
+              return (
+                <div key={ch.id} className="pt-3 pb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={ch.avatar}
+                      alt={ch.name}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1 font-bold text-sm text-slate-800 dark:text-slate-200">
+                        <span>{ch.name}</span>
+                        {ch.verified && <span className="text-[#2563EB]">✓</span>}
+                      </div>
+                      <p className="text-xs text-slate-400">{ch.followers}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFollowChannel(ch.id)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      isFollowed
+                        ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        : "bg-[#2563EB] text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {isFollowed ? "Following" : "Follow"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button size="sm" onClick={() => setIsExploreChannelsOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Video Status Coming Soon Modal */}
       <Modal

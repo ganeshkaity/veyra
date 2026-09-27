@@ -11,6 +11,7 @@ import { GifPickerModal } from "./GifPickerModal";
 import { StickerPickerModal } from "./StickerPickerModal";
 import { ForwardMessageModal } from "./ForwardMessageModal";
 import { ImageViewerModal } from "./media/ImageViewerModal";
+import { CollageViewerModal } from "./media/CollageViewerModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MessageListSkeleton } from "@/components/ui/Skeleton";
 import { VeyraAiWelcomeCard } from "@/components/ai/VeyraAiWelcomeCard";
@@ -78,6 +79,8 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [forwardingMessages, setForwardingMessages] = useState<ChatMessage[]>([]);
   const [viewerMessage, setViewerMessage] = useState<ChatMessage | null>(null);
+  const [collageViewerMessage, setCollageViewerMessage] = useState<ChatMessage | null>(null);
+  const [collageInitialIndex, setCollageInitialIndex] = useState(0);
   const [editText, setEditText] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [actionErrorToast, setActionErrorToast] = useState<string | null>(null);
@@ -465,20 +468,25 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   };
 
   // Send photo with SD/HD metadata
+  // Send photo with SD/HD metadata, optional caption, and multi-image support
   const handleSendImage = async (
     imageUrl: string,
     quality: "sd" | "hd",
-    metadata?: ChatMessage["mediaMetadata"]
+    metadata?: ChatMessage["mediaMetadata"],
+    caption?: string,
+    additionalUrls?: string[]
   ) => {
     try {
+      const allUrls = additionalUrls && additionalUrls.length > 0 ? [imageUrl, ...additionalUrls] : [imageUrl];
       await sendMessage(conversation.id, {
         conversationId: conversation.id,
         senderId: currentUser.uid,
         senderName: currentUser.displayName,
         senderAvatar: currentUser.avatarUrl,
-        text: "Photo",
+        text: caption || (allUrls.length > 1 ? `${allUrls.length} Photos` : "Photo"),
         type: "image",
         mediaUrl: imageUrl,
+        mediaUrls: allUrls,
         mediaQuality: quality,
         mediaMetadata: metadata,
       });
@@ -825,7 +833,14 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
                       onEdit={handleStartEdit}
                       onDeleteForEveryone={handleDeleteForEveryone}
                       onDeleteForMe={handleDeleteForMe}
-                      onOpenImageViewer={(m) => setViewerMessage(m)}
+                      onOpenImageViewer={(m, idx) => {
+                        if (m.mediaUrls && m.mediaUrls.length > 1) {
+                          setCollageViewerMessage(m);
+                          setCollageInitialIndex(idx || 0);
+                        } else {
+                          setViewerMessage(m);
+                        }
+                      }}
                     />
                   );
                 });
@@ -1078,11 +1093,28 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
           </div>
         </Modal>
 
-        {/* Image Viewer Lightbox Modal */}
+        {/* Image Viewer Lightbox Modal matching Reference Image 4 */}
         <ImageViewerModal
           isOpen={!!viewerMessage}
           onClose={() => setViewerMessage(null)}
           message={viewerMessage}
+          allMediaMessages={visibleMessages}
+          currentUser={currentUser}
+          conversationId={conversation.id}
+          onReply={(m) => setReplyingTo(m)}
+          onForward={(m) => setForwardingMessage(m)}
+          onDeleteForMe={handleDeleteForMe}
+        />
+
+        {/* Collage Viewer Lightbox Modal for multiple photos (<=49 images) */}
+        <CollageViewerModal
+          isOpen={!!collageViewerMessage}
+          onClose={() => setCollageViewerMessage(null)}
+          message={collageViewerMessage}
+          initialIndex={collageInitialIndex}
+          currentUser={currentUser}
+          onReply={(m) => setReplyingTo(m)}
+          onForward={(m) => setForwardingMessage(m)}
         />
 
         {/* Edit Message Modal */}
@@ -1137,7 +1169,14 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
         onClose={handleCloseDetails}
         onGroupDeletedOrLeft={onBackMobile}
         messages={messages}
-        onOpenImageViewer={(m) => setViewerMessage(m)}
+        onOpenImageViewer={(m) => {
+          if (m.mediaUrls && m.mediaUrls.length > 1) {
+            setCollageViewerMessage(m);
+            setCollageInitialIndex(0);
+          } else {
+            setViewerMessage(m);
+          }
+        }}
       />
     </div>
   );

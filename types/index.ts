@@ -61,6 +61,7 @@ export interface ChatMessage {
   text: string;
   type: MessageType;
   mediaUrl?: string;
+  mediaUrls?: string[];
   mediaQuality?: 'sd' | 'hd';
   mediaMetadata?: MediaMetadata;
   replyTo?: MessageReplyInfo;
@@ -73,6 +74,7 @@ export interface ChatMessage {
   deletedForUsers?: string[];
   starredBy?: string[];
   forwarded?: boolean;
+  reactions?: Record<string, { emoji: string; userId: string; userName: string; userAvatar?: string; timestamp: number }>;
   createdAt: number;
   updatedAt?: number;
 }
@@ -181,6 +183,7 @@ export interface StatusItem {
   content?: string;
   mediaUrl?: string;
   backgroundColor?: string;
+  fontFamily?: string;
   createdAt: number;
   expiresAt: number;
   viewedBy?: string[];

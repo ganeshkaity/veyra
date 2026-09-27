@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { NavigationTab, NAVIGATION_ITEMS } from "@/constants/brand";
 import { Icon } from "@/components/ui/Icon";
 
@@ -29,7 +30,19 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
           >
-            <Icon name={item.icon} size="sm" fill={isActive} />
+            {item.id === "ai" ? (
+              <div className="w-5 h-5 rounded-md overflow-hidden flex items-center justify-center">
+                <Image
+                  src="/assets/veyra_ai_logo.png"
+                  alt="Veyra AI"
+                  width={20}
+                  height={20}
+                  className="object-contain"
+                />
+              </div>
+            ) : (
+              <Icon name={item.icon} size="sm" fill={isActive} />
+            )}
             <span className="text-[11px] font-medium tracking-tight leading-tight">
               {item.label}
             </span>

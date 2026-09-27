@@ -23,7 +23,7 @@ export const NAVIGATION_ITEMS = [
   { id: "chats", label: "Chats", icon: "chat", mobileOrder: 1 },
   { id: "status", label: "Status", icon: "donut_large", mobileOrder: 2 },
   { id: "you", label: "You", icon: "person", mobileOrder: 3 },
-  { id: "groups", label: "Groups", icon: "groups", mobileOrder: 4 },
+  { id: "ai", label: "Veyra AI", icon: "auto_awesome", mobileOrder: 4 },
   { id: "settings", label: "Settings", icon: "settings", mobileOrder: 5 },
 ] as const;
 

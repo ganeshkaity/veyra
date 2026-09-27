@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { UserProfile } from "@/types";
 import { Modal } from "@/components/ui/Modal";
@@ -31,6 +31,32 @@ export const CreateImageStatusModal: React.FC<CreateImageStatusModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pushedHistoryRef = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      pushedHistoryRef.current = false;
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stateObj = { ...(window.history.state || {}), statusModal: "image" };
+      window.history.pushState(stateObj, "", window.location.href);
+      pushedHistoryRef.current = true;
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pushedHistoryRef.current = false;
+      handleClose();
+    };
+
+    window.addEventListener("popstate", handlePopState, true);
+    return () => {
+      window.removeEventListener("popstate", handlePopState, true);
+    };
+  }, [isOpen]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -92,7 +118,12 @@ export const CreateImageStatusModal: React.FC<CreateImageStatusModalProps> = ({
     setPreviewUrl(null);
     setCaption("");
     setError(null);
-    onClose();
+    if (pushedHistoryRef.current && typeof window !== "undefined") {
+      pushedHistoryRef.current = false;
+      window.history.back();
+    } else {
+      onClose();
+    }
   };
 
   return (

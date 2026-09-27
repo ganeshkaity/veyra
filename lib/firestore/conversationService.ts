@@ -365,10 +365,12 @@ export async function sendMessage(
     text: string;
     type: ChatMessage["type"];
     mediaUrl?: string;
+    mediaUrls?: string[];
     mediaQuality?: "sd" | "hd";
     mediaMetadata?: ChatMessage["mediaMetadata"];
     replyTo?: ChatMessage["replyTo"];
     forwarded?: boolean;
+    reactions?: ChatMessage["reactions"];
   }
 ): Promise<string> {
   const messagesRef = collection(db, "conversations", conversationId, "messages");
@@ -1156,4 +1158,37 @@ export async function clearMultipleConversations(
   deleteStarred = false
 ): Promise<void> {
   await Promise.allSettled(conversationIds.map((id) => clearConversation(id, uid, deleteStarred)));
+}
+
+/**
+ * React to a message with an emoji (or unreact if same emoji is tapped again)
+ */
+export async function toggleMessageReaction(
+  conversationId: string,
+  messageId: string,
+  user: UserProfile,
+  emoji: string
+): Promise<void> {
+  const msgRef = doc(db, "conversations", conversationId, "messages", messageId);
+  const snap = await getDoc(msgRef);
+  if (!snap.exists()) return;
+  const msgData = snap.data() as ChatMessage;
+  const reactions = { ...(msgData.reactions || {}) };
+
+  if (reactions[user.uid]?.emoji === emoji) {
+    delete reactions[user.uid];
+  } else {
+    reactions[user.uid] = {
+      emoji,
+      userId: user.uid,
+      userName: user.displayName || "User",
+      userAvatar: user.avatarUrl || "",
+      timestamp: Date.now(),
+    };
+  }
+
+  await updateDoc(msgRef, {
+    reactions,
+    updatedAt: Date.now(),
+  });
 }

@@ -31,6 +31,7 @@ import {
   getEffectiveChatLists,
   toggleConversationList,
 } from "@/lib/firestore/chatLockAndListService";
+import { getUserProfile } from "@/lib/firestore/userService";
 import { ChatMessage } from "@/types";
 
 interface DetailsPanelProps {
@@ -117,6 +118,24 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
     }
     const unsub = subscribeToUserPresence(otherId, (p) => setPresence(p));
     return () => unsub();
+  }, [isOpen, isGroup, isAi, otherId]);
+
+  // Fetch full user profile from DB for 1-to-1 chats so description/bio is real
+  const [otherUserProfile, setOtherUserProfile] = useState<UserProfile | null>(null);
+  useEffect(() => {
+    if (!isOpen || isGroup || isAi || !otherId) {
+      setOtherUserProfile(null);
+      return;
+    }
+    let isCancelled = false;
+    getUserProfile(otherId).then((p) => {
+      if (!isCancelled && p) {
+        setOtherUserProfile(p);
+      }
+    });
+    return () => {
+      isCancelled = true;
+    };
   }, [isOpen, isGroup, isAi, otherId]);
 
   if (!isOpen) return null;
@@ -315,10 +334,10 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
       "Your friendly AI companion on Veyra — ask questions, brainstorm ideas, learn something new, or just have a chat.";
   } else {
     const other = otherId ? conversation.participants[otherId] : null;
-    name = other?.displayName || "User";
-    avatarUrl = other?.avatarUrl || "";
-    username = other?.username || "";
-    bio = "Hey there! I am using Veyra.";
+    name = otherUserProfile?.displayName || other?.displayName || "User";
+    avatarUrl = otherUserProfile?.avatarUrl || other?.avatarUrl || "";
+    username = otherUserProfile?.username || other?.username || "";
+    bio = otherUserProfile?.bio || (other as any)?.bio || "Hey there! I am using Veyra.";
   }
 
   // Participants in group
@@ -865,44 +884,48 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
             {/* Divider */}
             <hr className="my-2 border-slate-100 dark:border-slate-800" />
 
-            {/* 6. Add/Remove from favourites */}
+            {/* 6. Add/Remove from favourites & 7. Change list & 8. Export chat */}
             <div className="py-1">
-              <button
-                onClick={async () => {
-                  const res = await toggleConversationFavourite(
-                    currentUser.uid,
-                    conversation.id,
-                    currentUser
-                  );
-                  setIsFavourite(res.isFavourite);
-                  showToast(res.isFavourite ? "Added to favourites ❤️" : "Removed from favourites");
-                }}
-                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
-              >
-                <Icon
-                  name={isFavourite ? "favorite" : "favorite_border"}
-                  size="md"
-                  className={
-                    isFavourite
-                      ? "text-rose-500"
-                      : "text-slate-500 dark:text-slate-400 group-hover:text-rose-500"
-                  }
-                />
-                <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
-                  {isFavourite ? "Remove from favourites" : "Add to favourites"}
-                </span>
-              </button>
+              {!isAi && (
+                <>
+                  <button
+                    onClick={async () => {
+                      const res = await toggleConversationFavourite(
+                        currentUser.uid,
+                        conversation.id,
+                        currentUser
+                      );
+                      setIsFavourite(res.isFavourite);
+                      showToast(res.isFavourite ? "Added to favourites ❤️" : "Removed from favourites");
+                    }}
+                    className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
+                  >
+                    <Icon
+                      name={isFavourite ? "favorite" : "favorite_border"}
+                      size="md"
+                      className={
+                        isFavourite
+                          ? "text-rose-500"
+                          : "text-slate-500 dark:text-slate-400 group-hover:text-rose-500"
+                      }
+                    />
+                    <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
+                      {isFavourite ? "Remove from favourites" : "Add to favourites"}
+                    </span>
+                  </button>
 
-              {/* 7. Change list */}
-              <button
-                onClick={() => setShowChangeListModal(true)}
-                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
-              >
-                <Icon name="folder" size="md" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white" />
-                <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
-                  Change list
-                </span>
-              </button>
+                  {/* 7. Change list */}
+                  <button
+                    onClick={() => setShowChangeListModal(true)}
+                    className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
+                  >
+                    <Icon name="folder" size="md" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white" />
+                    <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
+                      Change list
+                    </span>
+                  </button>
+                </>
+              )}
 
               {/* 8. Export chat */}
               <button
@@ -931,15 +954,17 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
                 </span>
               </button>
 
-              <button
-                onClick={handleDeleteChatConfirm}
-                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-red-50/50 dark:hover:bg-red-950/20 text-left text-red-600 dark:text-red-400 transition-colors"
-              >
-                <Icon name="delete" size="md" className="text-red-600 dark:text-red-400" />
-                <span className="font-medium text-[14px]">
-                  Delete chat
-                </span>
-              </button>
+              {!isAi && (
+                <button
+                  onClick={handleDeleteChatConfirm}
+                  className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-red-50/50 dark:hover:bg-red-950/20 text-left text-red-600 dark:text-red-400 transition-colors"
+                >
+                  <Icon name="delete" size="md" className="text-red-600 dark:text-red-400" />
+                  <span className="font-medium text-[14px]">
+                    Delete chat
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         );
@@ -974,10 +999,12 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
               <span>Mute Notifications</span>
             </button>
 
-            <button className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-              <Icon name="block" size="sm" />
-              <span>Block Contact</span>
-            </button>
+            {!isAi && (
+              <button className="w-full flex items-center gap-3 p-2.5 rounded-xl text-left text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                <Icon name="block" size="sm" />
+                <span>Block Contact</span>
+              </button>
+            )}
           </>
         )}
       </div>

@@ -45,8 +45,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeTab }) => {
     activeTab ||
     (pathname.startsWith("/status")
       ? "status"
-      : pathname.startsWith("/groups")
-      ? "groups"
       : pathname.startsWith("/profile")
       ? "you"
       : pathname.startsWith("/setting")
@@ -56,7 +54,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeTab }) => {
   const handleTabChange = (tab: NavigationTab) => {
     if (tab === "chats") router.push("/chat");
     else if (tab === "status") router.push("/status");
-    else if (tab === "groups") router.push("/groups");
+    else if (tab === "ai") handleOpenAi();
     else if (tab === "you") router.push("/profile");
     else if (tab === "settings") router.push("/setting");
   };

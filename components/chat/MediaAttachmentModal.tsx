@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +13,9 @@ interface MediaAttachmentModalProps {
   onSendImage: (
     imageUrl: string,
     quality: "sd" | "hd",
-    metadata?: ChatMessage["mediaMetadata"]
+    metadata?: ChatMessage["mediaMetadata"],
+    caption?: string,
+    additionalUrls?: string[]
   ) => Promise<void>;
   initialFile?: File | null;
   initialComingSoon?: {
@@ -30,29 +32,61 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
   initialFile,
   initialComingSoon,
 }) => {
-  const [selectedFile, setSelectedFile] = useState<File | null>(initialFile || null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [caption, setCaption] = useState("");
   const [quality, setQuality] = useState<"sd" | "hd">("sd");
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [comingSoonFeature, setComingSoonFeature] = useState<{
     title: string;
     description: string;
     icon: string;
   } | null>(initialComingSoon || null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync with initialFile when opened
-  React.useEffect(() => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pushedHistoryRef = useRef(false);
+
+  // Requirement 7: Back key / backward navigation closes ONLY this modal
+  useEffect(() => {
+    if (!isOpen) {
+      pushedHistoryRef.current = false;
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stateObj = { ...(window.history.state || {}), modal: "mediaAttachment" };
+      window.history.pushState(stateObj, "", window.location.href);
+      pushedHistoryRef.current = true;
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pushedHistoryRef.current = false;
+      handleClose();
+    };
+
+    window.addEventListener("popstate", handlePopState, true);
+    return () => {
+      window.removeEventListener("popstate", handlePopState, true);
+    };
+  }, [isOpen]);
+
+  // Sync initialFile
+  useEffect(() => {
     if (initialFile) {
-      setSelectedFile(initialFile);
+      setSelectedFiles([initialFile]);
       const url = URL.createObjectURL(initialFile);
-      setPreviewUrl(url);
+      setPreviewUrls([url]);
+      setActivePreviewIndex(0);
     }
   }, [initialFile]);
 
-  // Sync with initialComingSoon when opened
-  React.useEffect(() => {
+  // Sync initialComingSoon
+  useEffect(() => {
     if (initialComingSoon) {
       setComingSoonFeature(initialComingSoon);
     }
@@ -64,38 +98,80 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith("image/")) {
-        setErrorMessage("Please select a valid image file.");
-        return;
-      }
-      setSelectedFile(file);
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const validImages = files.filter((f) => f.type.startsWith("image/"));
+    if (validImages.length === 0) {
+      setErrorMessage("Please select valid image files.");
+      return;
+    }
+
+    const combined = [...selectedFiles, ...validImages];
+    if (combined.length > 49) {
+      setErrorMessage("You can select up to 49 images. The first 49 images have been selected.");
+    } else {
       setErrorMessage(null);
+    }
+
+    const capped = combined.slice(0, 49);
+    setSelectedFiles(capped);
+    const urls = capped.map((f) => URL.createObjectURL(f));
+    setPreviewUrls(urls);
+    if (activePreviewIndex >= capped.length) {
+      setActivePreviewIndex(0);
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveImage = (index: number) => {
+    const newFiles = selectedFiles.filter((_, i) => i !== index);
+    const newUrls = previewUrls.filter((_, i) => i !== index);
+    setSelectedFiles(newFiles);
+    setPreviewUrls(newUrls);
+    if (activePreviewIndex >= newFiles.length) {
+      setActivePreviewIndex(Math.max(0, newFiles.length - 1));
     }
   };
 
   const handleUploadAndSend = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
     try {
       setIsUploading(true);
       setErrorMessage(null);
-      const result: UploadedImageResult = await uploadImage(selectedFile, quality);
-      await onSendImage(result.url, quality, {
-        width: result.width,
-        height: result.height,
-        sizeBytes: result.sizeBytes,
-        mimeType: result.mimeType,
-        fileName: result.fileName,
-      });
+      setUploadProgress({ current: 0, total: selectedFiles.length });
+
+      const uploadedResults: UploadedImageResult[] = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        setUploadProgress({ current: i + 1, total: selectedFiles.length });
+        const res = await uploadImage(selectedFiles[i], quality);
+        uploadedResults.push(res);
+      }
+
+      const primary = uploadedResults[0];
+      const additional = uploadedResults.slice(1).map((r) => r.url);
+
+      await onSendImage(
+        primary.url,
+        quality,
+        {
+          width: primary.width,
+          height: primary.height,
+          sizeBytes: primary.sizeBytes,
+          mimeType: primary.mimeType,
+          fileName: primary.fileName,
+        },
+        caption.trim() || undefined,
+        additional.length > 0 ? additional : undefined
+      );
+
       handleClose();
     } catch (err: any) {
-      console.error("Failed to send image:", err);
+      console.error("Failed to send images:", err);
       setErrorMessage(
-        err.message || "Failed to upload image. Please check your connection and try again."
+        err.message || "Failed to upload images. Please check your connection and try again."
       );
     } finally {
       setIsUploading(false);
@@ -103,17 +179,26 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
   };
 
   const handleClose = () => {
-    setSelectedFile(null);
-    setPreviewUrl(null);
+    previewUrls.forEach((u) => URL.revokeObjectURL(u));
+    setSelectedFiles([]);
+    setPreviewUrls([]);
+    setActivePreviewIndex(0);
+    setCaption("");
     setComingSoonFeature(null);
     setErrorMessage(null);
-    onClose();
+
+    if (pushedHistoryRef.current && typeof window !== "undefined") {
+      pushedHistoryRef.current = false;
+      window.history.back();
+    } else {
+      onClose();
+    }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Share Media" maxWidth="md">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Share Media" maxWidth="lg">
       <div className="space-y-4">
-        {/* Coming Soon Modal / Notice for Video, Document, Audio */}
+        {/* Coming Soon Notice */}
         {comingSoonFeature && (
           <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-transparent border border-blue-500/20 animate-in fade-in zoom-in-95">
             <div className="flex items-start gap-3">
@@ -152,14 +237,14 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
           </div>
         )}
 
-        {!previewUrl ? (
+        {selectedFiles.length === 0 ? (
           /* Attachment Options Grid */
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2">
-            {/* Functional Photo Upload */}
+            {/* Functional Multi-Photo Upload (up to 49 images) */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-700 transition-all group"
+              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-700 transition-all group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#2563EB] to-blue-400 text-white flex items-center justify-center mb-2 shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
                 <Icon name="photo_camera" size="md" />
@@ -167,7 +252,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
                 Photos
               </span>
-              <span className="text-[10px] text-slate-400 mt-0.5">SD / HD Image</span>
+              <span className="text-[10px] text-slate-400 mt-0.5">Up to 49 images</span>
             </button>
 
             {/* Video (Coming Soon) */}
@@ -177,11 +262,11 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                 setComingSoonFeature({
                   title: "Video",
                   description:
-                    "High-definition video messaging and playback with streaming compression is arriving in an upcoming Veyra release.",
+                    "High-definition video messaging and playback is arriving in an upcoming Veyra release.",
                   icon: "videocam",
                 })
               }
-              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group"
+              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 to-indigo-500 text-white flex items-center justify-center mb-2 shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
                 <Icon name="videocam" size="md" />
@@ -199,11 +284,11 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                 setComingSoonFeature({
                   title: "Document",
                   description:
-                    "Secure PDF, DOCX, and presentations sharing with preview cards will be enabled in the next update.",
+                    "Secure PDF, DOCX, and file sharing with preview cards will be enabled in the next update.",
                   icon: "description",
                 })
               }
-              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group"
+              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-teal-500 text-white flex items-center justify-center mb-2 shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
                 <Icon name="description" size="md" />
@@ -225,7 +310,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                   icon: "mic",
                 })
               }
-              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group"
+              className="flex flex-col items-center justify-center p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center mb-2 shadow-md shadow-rose-500/20 group-hover:scale-105 transition-transform">
                 <Icon name="mic" size="md" />
@@ -237,32 +322,110 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
             </button>
           </div>
         ) : (
-          /* Image Preview & Quality Selector */
+          /* Multi-image Preview, Thumbnails Strip, Caption, Quality Selector */
           <div className="space-y-4">
-            <div className="relative w-full h-64 rounded-2xl overflow-hidden bg-slate-900/90 flex items-center justify-center border border-slate-200 dark:border-slate-800 shadow-inner">
-              <img
-                src={previewUrl}
-                alt="Selected media preview"
-                className="max-w-full max-h-full object-contain"
-              />
-              <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[11px] font-mono flex items-center gap-1.5">
-                <Icon name="image" size="xs" />
-                <span className="truncate max-w-[200px]">{selectedFile?.name}</span>
-                <span className="opacity-60">•</span>
-                <span>{selectedFile ? formatFileSize(selectedFile.size) : ""}</span>
+            {/* Active Image Large Preview */}
+            <div className="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center border border-slate-200 dark:border-slate-800 shadow-inner">
+              {previewUrls[activePreviewIndex] && (
+                <img
+                  src={previewUrls[activePreviewIndex]}
+                  alt={`Preview ${activePreviewIndex + 1}`}
+                  className="max-w-full max-h-full object-contain"
+                />
+              )}
+
+              {/* Top pill with count and file name */}
+              <div className="absolute top-2.5 left-2.5 px-3 py-1 rounded-full bg-black/65 backdrop-blur-md text-white text-xs font-medium flex items-center gap-2">
+                <span>
+                  {activePreviewIndex + 1} / {selectedFiles.length}
+                </span>
+                <span className="opacity-50">•</span>
+                <span className="truncate max-w-[150px] font-mono text-[11px]">
+                  {selectedFiles[activePreviewIndex]?.name}
+                </span>
+              </div>
+
+              {/* Remove active button */}
+              <button
+                type="button"
+                onClick={() => handleRemoveImage(activePreviewIndex)}
+                className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/65 hover:bg-red-600 text-white backdrop-blur-md transition-colors"
+                title="Remove this image"
+              >
+                <Icon name="delete" size="xs" />
+              </button>
+            </div>
+
+            {/* Thumbnail Reel (slidable / scrollable) */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
+              {previewUrls.map((url, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => setActivePreviewIndex(idx)}
+                  className={`relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 cursor-pointer border-2 transition-all ${
+                    idx === activePreviewIndex
+                      ? "border-[#2563EB] scale-105 shadow-md"
+                      : "border-transparent opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <img src={url} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveImage(idx);
+                    }}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/80 text-white flex items-center justify-center text-[10px] hover:bg-red-600 transition-colors"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+
+              {/* Add more button (if < 49) */}
+              {selectedFiles.length < 49 && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-[#2563EB] dark:hover:border-[#2563EB] flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 hover:text-[#2563EB] transition-colors flex-shrink-0 cursor-pointer"
+                  title="Add more photos"
+                >
+                  <Icon name="add" size="sm" />
+                  <span className="text-[10px] font-semibold mt-0.5">Add</span>
+                </button>
+              )}
+            </div>
+
+            {/* Caption Input */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Add a caption
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Write a caption for your images..."
+                  maxLength={500}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-[#2563EB] transition-all pr-12"
+                />
+                <span className="absolute right-3 text-[11px] text-slate-400 font-mono">
+                  {caption.length}/500
+                </span>
               </div>
             </div>
 
-            {/* Quality Picker: SD vs HD */}
+            {/* Quality Picker & File Summary */}
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-4">
-              <div>
-                <h5 className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                  Sending Quality
+              <div className="min-w-0">
+                <h5 className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {selectedFiles.length} {selectedFiles.length === 1 ? "Image" : "Images"} Selected
                 </h5>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  {quality === "sd"
-                    ? "SD: Smart compressed (~300–500 KB, fast send, sharp visuals)"
-                    : "HD: High definition original resolution preserved"}
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Total size:{" "}
+                  {formatFileSize(selectedFiles.reduce((acc, f) => acc + f.size, 0))}
                 </p>
               </div>
 
@@ -298,11 +461,12 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setSelectedFile(null);
-                  setPreviewUrl(null);
+                  previewUrls.forEach((u) => URL.revokeObjectURL(u));
+                  setSelectedFiles([]);
+                  setPreviewUrls([]);
                 }}
               >
-                Change Photo
+                Clear All
               </Button>
 
               <Button
@@ -312,7 +476,11 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                 onClick={handleUploadAndSend}
                 leftIcon={<Icon name="send" size="xs" />}
               >
-                Send {quality.toUpperCase()} Photo
+                {isUploading
+                  ? `Uploading (${uploadProgress.current}/${uploadProgress.total})...`
+                  : `Send ${selectedFiles.length} ${
+                      selectedFiles.length === 1 ? "Photo" : "Photos"
+                    }`}
               </Button>
             </div>
           </div>
@@ -322,8 +490,9 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
-          onChange={handleFileChange}
+          onChange={handleFilesChange}
         />
       </div>
     </Modal>

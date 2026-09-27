@@ -10,7 +10,8 @@ import { StickerMessage } from "./media/StickerMessage";
 import { ChatMessageMarkdown, copyToClipboard } from "./ChatMessageMarkdown";
 import { WhatsAppForwardIcon } from "./WhatsAppForwardIcon";
 import { MessageStatusTick } from "./MessageStatusTick";
-import { toggleStarMessage } from "@/lib/firestore/conversationService";
+import { toggleStarMessage, toggleMessageReaction } from "@/lib/firestore/conversationService";
+import { ReactionDetailsModal } from "./ReactionDetailsModal";
 
 // Global trackers across all message items to avoid reopening loops upon backdrop tap/click dismissals
 let globalMenuClosedAt = 0;
@@ -33,7 +34,7 @@ interface MessageItemProps {
   onEdit: (message: ChatMessage) => void;
   onDeleteForEveryone: (messageId: string) => void;
   onDeleteForMe: (messageId: string) => void;
-  onOpenImageViewer?: (message: ChatMessage) => void;
+  onOpenImageViewer?: (message: ChatMessage, initialIndex?: number) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -69,6 +70,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showReactionDetailsModal, setShowReactionDetailsModal] = useState(false);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
   const [isPinned, setIsPinned] = useState(false);
   const isStarred = Boolean(message.starredBy?.includes(currentUser.uid));
@@ -377,6 +379,38 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   // Action helpers matching WhatsApp context menu
   const handleCopy = async () => {
     closeMenu();
+    if (message.type === "image" && message.mediaUrl) {
+      try {
+        const res = await fetch(message.mediaUrl);
+        const blob = await res.blob();
+        let pngBlob = blob;
+        if (blob.type !== "image/png") {
+          const img = document.createElement("img");
+          img.crossOrigin = "anonymous";
+          img.src = message.mediaUrl;
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+          });
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0);
+          pngBlob = await new Promise<Blob>((resolve) =>
+            canvas.toBlob((b) => resolve(b || blob), "image/png")
+          );
+        }
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": pngBlob }),
+        ]);
+        setToastMessage("Image copied to clipboard");
+        setTimeout(() => setToastMessage(null), 2000);
+        return;
+      } catch (err) {
+        console.warn("Could not copy image blob to clipboard, falling back to URL copy:", err);
+      }
+    }
     const content = message.text || message.mediaUrl || "";
     if (content) {
       const success = await copyToClipboard(content);
@@ -422,11 +456,15 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     }
   };
 
-  const handleSelectReaction = (emoji: string) => {
-    setSelectedReaction((prev) => (prev === emoji ? null : emoji));
+  const handleSelectReaction = async (emoji: string) => {
     closeMenu();
-    setToastMessage(`Reacted ${emoji}`);
-    setTimeout(() => setToastMessage(null), 2000);
+    try {
+      await toggleMessageReaction(message.conversationId, message.id, currentUser, emoji);
+      setToastMessage(`Reacted ${emoji}`);
+      setTimeout(() => setToastMessage(null), 2000);
+    } catch (err) {
+      console.error("Failed to react to message:", err);
+    }
   };
 
   const handleToggleStar = async () => {
@@ -696,7 +734,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               <ImageMessage
                 message={message}
                 hasCaption={hasCaption}
-                onOpenViewer={(m) => onOpenImageViewer?.(m)}
+                onOpenViewer={(m, idx) => onOpenImageViewer?.(m, idx)}
               >
                 {!hasCaption && floatingMediaTimestamp}
               </ImageMessage>
@@ -781,19 +819,31 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               </div>
             )}
 
-            {/* Reaction badge under bubble if user reacted */}
-            {selectedReaction && (
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedReaction(null);
-                }}
-                className="absolute -bottom-2.5 right-3 z-10 px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-sm text-xs select-none hover:scale-110 active:scale-95 transition-transform"
-                title="Click to remove reaction"
-              >
-                {selectedReaction}
-              </div>
-            )}
+            {/* Dynamic Reaction badge under bubble if message has reactions */}
+            {(() => {
+              const reactionList = Object.values(message.reactions || {});
+              if (reactionList.length === 0) return null;
+              const uniqueEmojis = Array.from(new Set(reactionList.map((r) => r.emoji)));
+              return (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowReactionDetailsModal(true);
+                  }}
+                  className="absolute -bottom-2.5 right-2 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-sm text-xs select-none hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  title="View reactions"
+                >
+                  <span className="flex items-center text-[12px] leading-none">
+                    {uniqueEmojis.slice(0, 3).join("")}
+                  </span>
+                  {reactionList.length > 1 && (
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 ml-0.5">
+                      {reactionList.length}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* WhatsApp-Style Full Context Menu moved outside bubbleRef */}
           </div>
@@ -980,20 +1030,22 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 <span>{isPinned ? "Unpin" : "Pin"}</span>
               </button>
 
-              {/* Ask Veyra AI (matching Ask Meta AI) */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (Date.now() - menuOpenedAtRef.current < 350) return;
-                  handleAskVeyraAi();
-                }}
-                className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800/90 transition-colors cursor-pointer"
-              >
-                <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center">
-                  <img src="/assets/veyra_ai_logo.png" alt="AI" className="w-full h-full object-contain" />
-                </div>
-                <span>Ask Veyra AI</span>
-              </button>
+              {/* Ask Veyra AI (only for text messages, not for media/stickers/gifs) */}
+              {message.type === "text" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (Date.now() - menuOpenedAtRef.current < 350) return;
+                    handleAskVeyraAi();
+                  }}
+                  className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800/90 transition-colors cursor-pointer"
+                >
+                  <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    <img src="/assets/veyra_ai_logo.png" alt="AI" className="w-full h-full object-contain" />
+                  </div>
+                  <span>Ask Veyra AI</span>
+                </button>
+              )}
 
               {/* Star */}
               <button
@@ -1155,6 +1207,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         </div>
       )}
+
+      {/* Reaction Details Modal (Bottom sheet in mobile, modal in desktop) */}
+      <ReactionDetailsModal
+        isOpen={showReactionDetailsModal}
+        onClose={() => setShowReactionDetailsModal(false)}
+        reactions={message.reactions}
+        currentUser={currentUser}
+        onRemoveReaction={(emoji) =>
+          toggleMessageReaction(message.conversationId, message.id, currentUser, emoji)
+        }
+      />
 
       {/* Floating Action Feedback Toast */}
       {toastMessage && (

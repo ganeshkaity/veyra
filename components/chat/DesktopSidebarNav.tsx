@@ -44,7 +44,13 @@ export const DesktopSidebarNav: React.FC<DesktopSidebarNavProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => onTabChange(item.id)}
+                onClick={() => {
+                  if (item.id === "ai") {
+                    onOpenAi();
+                  } else {
+                    onTabChange(item.id);
+                  }
+                }}
                 title={item.label}
                 aria-label={item.label}
                 className={`relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${
@@ -53,31 +59,25 @@ export const DesktopSidebarNav: React.FC<DesktopSidebarNavProps> = ({
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200"
                 }`}
               >
-                <Icon name={item.icon} size="md" fill={isActive} />
+                {item.id === "ai" ? (
+                  <div className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center">
+                    <Image
+                      src="/assets/veyra_ai_logo.png"
+                      alt="Veyra AI"
+                      width={24}
+                      height={24}
+                      className="object-contain"
+                    />
+                  </div>
+                ) : (
+                  <Icon name={item.icon} size="md" fill={isActive} />
+                )}
                 {isActive && (
                   <span className="absolute -left-2 w-1 h-5 rounded-r bg-[#2563EB] hidden" />
                 )}
               </button>
             );
           })}
-
-          {/* Veyra AI dedicated sidebar action */}
-          <button
-            onClick={onOpenAi}
-            title="Veyra AI Companion"
-            aria-label="Veyra AI Companion"
-            className="w-11 h-11 mt-1 rounded-xl flex items-center justify-center transition-all duration-200 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 group relative"
-          >
-            <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center p-0.5">
-              <Image
-                src="/assets/veyra_ai_logo.png"
-                alt="Veyra AI"
-                width={28}
-                height={28}
-                className="object-contain group-hover:scale-110 transition-transform"
-              />
-            </div>
-          </button>
         </nav>
       </div>
 

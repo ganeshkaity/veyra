@@ -51,6 +51,7 @@ export async function createStatus(data: {
   content?: string;
   mediaUrl?: string;
   backgroundColor?: string;
+  fontFamily?: string;
   mediaMetadata?: StatusItem["mediaMetadata"];
 }): Promise<string> {
   const statusRef = doc(collection(db, STATUSES_COLLECTION));
@@ -67,6 +68,7 @@ export async function createStatus(data: {
     content: data.content || "",
     mediaUrl: data.mediaUrl || "",
     backgroundColor: data.backgroundColor || "#2563EB",
+    fontFamily: data.fontFamily || "sans",
     createdAt: now,
     expiresAt,
     viewedBy: [data.userId], // Author has automatically viewed their own status

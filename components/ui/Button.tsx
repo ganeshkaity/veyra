@@ -30,7 +30,7 @@ export const Button: React.FC<ButtonProps> = ({
 
   const variantClasses = {
     primary:
-      "bg-gradient-to-r from-[#2563EB] to-[#14B8A6] text-white hover:opacity-95 shadow-md shadow-blue-500/20 focus:ring-[#2563EB]",
+      "bg-[#2563EB] text-white hover:bg-[#1D4ED8] shadow-sm shadow-blue-500/15 focus:ring-[#2563EB]",
     secondary:
       "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 focus:ring-slate-400",
     outline:

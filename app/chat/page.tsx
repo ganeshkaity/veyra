@@ -361,8 +361,8 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
             setActiveTab("chats");
           } else if (tab === "status") {
             router.push("/status");
-          } else if (tab === "groups") {
-            router.push("/groups");
+          } else if (tab === "ai") {
+            handleOpenAi();
           } else if (tab === "you") {
             router.push("/profile");
           } else if (tab === "settings") {
@@ -488,18 +488,6 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
         {/* TAB: STATUS */}
         {activeTab === "status" && <StatusView currentUser={profile} />}
 
-        {/* TAB: GROUPS */}
-        {activeTab === "groups" && (
-          <GroupsView
-            currentUser={profile}
-            conversations={conversations}
-            onSelectGroupConversation={(groupId) => {
-              setActiveTab("chats");
-              handleSelectConversation(groupId);
-            }}
-          />
-        )}
-
         {/* TAB: YOU (PROFILE) */}
         {activeTab === "you" && <ProfileView currentUser={profile} />}
 
@@ -516,8 +504,8 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
               setActiveTab("chats");
             } else if (tab === "status") {
               router.push("/status");
-            } else if (tab === "groups") {
-              router.push("/groups");
+            } else if (tab === "ai") {
+              handleOpenAi();
             } else if (tab === "you") {
               router.push("/profile");
             } else if (tab === "settings") {

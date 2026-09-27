@@ -6,7 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 
 interface ImageMessageProps {
   message: ChatMessage;
-  onOpenViewer: (message: ChatMessage) => void;
+  onOpenViewer: (message: ChatMessage, initialIndex?: number) => void;
   hasCaption?: boolean;
   children?: React.ReactNode;
 }
@@ -23,6 +23,81 @@ export const ImageMessage: React.FC<ImageMessageProps> = ({
   const quality = message.mediaQuality || "sd";
   const fileName = message.mediaMetadata?.fileName;
 
+  const images: string[] =
+    message.mediaUrls && message.mediaUrls.length > 0
+      ? message.mediaUrls
+      : message.mediaUrl
+      ? [message.mediaUrl]
+      : [];
+
+  const isMulti = images.length > 1;
+
+  // Collage Rendering for Multiple Images (<=49 images, Image 3 style)
+  if (isMulti) {
+    const displayCount = Math.min(images.length, 4);
+    const remainingCount = images.length - 3; // In a 4-cell layout, cell 4 shows remaining
+
+    return (
+      <div
+        onClick={() => onOpenViewer(message, 0)}
+        className={`relative rounded-2xl overflow-hidden cursor-pointer group max-w-sm border border-black/5 dark:border-white/10 shadow-xs ${
+          hasCaption ? "mb-1.5" : "mb-0"
+        }`}
+      >
+        {/* Collage Grid */}
+        <div
+          className={`grid gap-1 bg-black/10 dark:bg-white/5 p-1 rounded-2xl ${
+            images.length === 2
+              ? "grid-cols-2 h-48"
+              : images.length === 3
+              ? "grid-cols-2 grid-rows-2 h-64"
+              : "grid-cols-2 grid-rows-2 h-72"
+          }`}
+        >
+          {images.slice(0, displayCount).map((url, idx) => {
+            const isLastOfFour = idx === 3 && images.length > 4;
+            const spanClass =
+              images.length === 3 && idx === 0 ? "col-span-2 row-span-1" : "";
+
+            return (
+              <div
+                key={idx}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenViewer(message, idx);
+                }}
+                className={`relative overflow-hidden rounded-xl bg-slate-200 dark:bg-slate-800 ${spanClass}`}
+              >
+                <img
+                  src={url}
+                  alt={`Photo ${idx + 1}`}
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                />
+
+                {/* +N Remaining Overlay on the last visible photo (Image 3 reference) */}
+                {isLastOfFour && (
+                  <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px] flex items-center justify-center text-white text-3xl font-extrabold shadow-inner select-none transition-colors group-hover:bg-black/55">
+                    + {remainingCount}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Quality Pill Badge */}
+        <div className="absolute top-2.5 right-2.5 px-1.5 py-0.5 rounded-md bg-black/50 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider shadow-sm select-none z-10">
+          {quality.toUpperCase()}
+        </div>
+
+        {/* Floating Timestamp & Checkmark in bottom right */}
+        {children}
+      </div>
+    );
+  }
+
+  // Single Image Rendering
   return (
     <div
       onClick={() => !hasError && onOpenViewer(message)}

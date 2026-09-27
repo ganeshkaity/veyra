@@ -519,6 +519,39 @@ export const ChatList: React.FC<ChatListProps> = ({
     }
   };
 
+  const isLockedChatsOpenRef = useRef(false);
+  useEffect(() => {
+    isLockedChatsOpenRef.current = isLockedChatsOpen;
+  }, [isLockedChatsOpen]);
+
+  useEffect(() => {
+    const handlePopCapture = (e: PopStateEvent) => {
+      if (isLockedChatsOpenRef.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setIsLockedChatsOpen(false);
+      }
+    };
+    window.addEventListener("popstate", handlePopCapture, true);
+    return () => window.removeEventListener("popstate", handlePopCapture, true);
+  }, []);
+
+  const handleOpenLockedChats = () => {
+    setIsLockedChatsOpen(true);
+    setSearchQuery("");
+    if (typeof window !== "undefined") {
+      window.history.pushState({ lockedChats: true }, "", window.location.href);
+    }
+  };
+
+  const handleCloseLockedChats = () => {
+    if (typeof window !== "undefined" && window.history.state?.lockedChats) {
+      window.history.back();
+    } else {
+      setIsLockedChatsOpen(false);
+    }
+  };
+
   useEffect(() => {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
@@ -595,6 +628,11 @@ export const ChatList: React.FC<ChatListProps> = ({
       return false;
     }
 
+    // Exclude Veyra AI from chat list
+    if (c.type === "ai" || c.id === VEYRA_AI_CONVERSATION_ID || c.id.startsWith("ai_") || c.participantIds?.includes("veyra_ai")) {
+      return false;
+    }
+
     // Hide locked conversations from regular chat list
     if (isConversationLocked(c.id, currentUser)) {
       return false;
@@ -624,7 +662,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     } else if (filter === "friend") {
       const inFriend = currentUser.conversationListMemberships?.[c.id]?.includes("friend");
       if (inFriend === undefined) {
-        if (c.type === "group" || c.type === "ai") return false;
+        if (c.type === "group") return false;
       } else if (!inFriend) {
         return false;
       }
@@ -642,9 +680,6 @@ export const ChatList: React.FC<ChatListProps> = ({
 
     if (c.type === "group") {
       return (c.groupName || "").toLowerCase().includes(q);
-    }
-    if (c.type === "ai") {
-      return "veyra ai".includes(q);
     }
 
     const otherId = c.participantIds.find((id) => id !== currentUser.uid);
@@ -856,7 +891,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         currentUser={currentUser}
         selectedConversationId={selectedConversationId}
         onSelectConversation={onSelectConversation}
-        onBack={() => setIsLockedChatsOpen(false)}
+        onBack={handleCloseLockedChats}
         onLockedToggle={() => {
           refreshProfile();
           onArchiveToggle?.();
@@ -1270,8 +1305,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setIsLockedChatsOpen(true);
-                    setSearchQuery("");
+                    handleOpenLockedChats();
                   }}
                   className="w-full p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/5 hover:from-emerald-500/25 hover:to-teal-500/15 border border-emerald-500/30 text-left transition-all flex items-center justify-between group shadow-sm cursor-pointer animate-in fade-in zoom-in-95 duration-200"
                 >
@@ -1372,162 +1406,6 @@ export const ChatList: React.FC<ChatListProps> = ({
         ) : (
           /* SECTION B: Normal Chat List Mode */
           <div>
-            {/* Pinned Veyra AI Companion Entry (Hidden during Selection Mode) */}
-            {filter === "all" && !isSelectionMode && (() => {
-              const aiConvId = getVeyraAiConversationId(currentUser.uid);
-              const veyraAiConv: Conversation = {
-                id: aiConvId,
-                type: "ai",
-                participantIds: [currentUser.uid, "veyra_ai"],
-                participants: {
-                  [currentUser.uid]: currentUser,
-                  veyra_ai: {
-                    uid: "veyra_ai",
-                    displayName: "Veyra AI",
-                    username: "veyra_ai",
-                    email: "ai@veyra.app",
-                    avatarUrl: "/assets/veyra_ai_logo.png",
-                    createdAt: 0,
-                  },
-                },
-                createdAt: 0,
-                updatedAt: latestAiMessage?.createdAt || Date.now(),
-              } as Conversation;
-
-              const isAiSelected =
-                selectedConversationId === VEYRA_AI_CONVERSATION_ID ||
-                selectedConversationId === aiConvId;
-
-              let aiSnippetText = latestAiMessage?.text || "";
-              if (latestAiMessage) {
-                if (latestAiMessage.type === "image") aiSnippetText = "📷 Photo";
-                else if (latestAiMessage.type === "gif") aiSnippetText = "👾 GIF";
-                else if (latestAiMessage.type === "sticker") aiSnippetText = `${latestAiMessage.text} Sticker`;
-              }
-
-              return (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    if (aiIsLongPressRef.current || Date.now() - aiLastLongPressTimeRef.current < 500) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      aiIsLongPressRef.current = false;
-                      return;
-                    }
-                    onSelectConversation(aiConvId);
-                  }}
-                  onTouchStart={(e) => {
-                    aiTouchStartXRef.current = e.touches[0].clientX;
-                    aiTouchStartYRef.current = e.touches[0].clientY;
-                    aiIsLongPressRef.current = false;
-                    aiLongPressTimerRef.current = setTimeout(() => {
-                      aiIsLongPressRef.current = true;
-                      aiLastLongPressTimeRef.current = Date.now();
-                      if (typeof navigator !== "undefined" && navigator.vibrate) {
-                        try { navigator.vibrate(35); } catch (_) {}
-                      }
-                      handleOpenContextMenu(aiTouchStartXRef.current, aiTouchStartYRef.current, veyraAiConv);
-                    }, 450);
-                  }}
-                  onTouchMove={(e) => {
-                    const diffX = e.touches[0].clientX - aiTouchStartXRef.current;
-                    const diffY = e.touches[0].clientY - aiTouchStartYRef.current;
-                    if (Math.hypot(diffX, diffY) > 8 && aiLongPressTimerRef.current) {
-                      clearTimeout(aiLongPressTimerRef.current);
-                      aiLongPressTimerRef.current = null;
-                    }
-                  }}
-                  onTouchEnd={(e) => {
-                    if (aiLongPressTimerRef.current) {
-                      clearTimeout(aiLongPressTimerRef.current);
-                      aiLongPressTimerRef.current = null;
-                    }
-                    if (aiIsLongPressRef.current || Date.now() - aiLastLongPressTimeRef.current < 500) {
-                      if (e.cancelable) e.preventDefault();
-                      e.stopPropagation();
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleOpenContextMenu(e.clientX, e.clientY, veyraAiConv);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-all border-b border-teal-100/60 dark:border-teal-950/40 select-none group relative cursor-pointer ${
-                    isAiSelected
-                      ? "bg-teal-50/80 dark:bg-teal-950/30 border-l-4 border-l-teal-500"
-                      : "hover:bg-teal-50/40 dark:hover:bg-teal-950/20"
-                  }`}
-                >
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAvatarClick(
-                        veyraAiConv,
-                        "Veyra AI",
-                        "/assets/veyra_ai_logo.png"
-                      );
-                    }}
-                    className="relative flex-shrink-0 cursor-pointer rounded-full transition-transform hover:scale-105 active:scale-95"
-                    title="View Veyra AI photo"
-                  >
-                    <div className="w-11 h-11 rounded-full p-0.5 bg-gradient-to-tr from-blue-500 to-teal-500 flex items-center justify-center shadow-sm">
-                      <div className="w-full h-full rounded-full bg-white dark:bg-slate-900 flex items-center justify-center overflow-hidden">
-                        <Image
-                          src="/assets/veyra_ai_logo.png"
-                          alt="Veyra AI"
-                          width={28}
-                          height={28}
-                          className="object-contain"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-0.5">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                          Veyra
-                        </h4>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 flex-shrink-0">
-                          AI Buddy
-                        </span>
-                      </div>
-                      {latestAiMessage && (
-                        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">
-                          {formatMessageTime(latestAiMessage.createdAt)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 truncate">
-                      {latestAiMessage ? (
-                        <>
-                          {latestAiMessage.senderId === currentUser.uid && (
-                            <MessageStatusTick
-                              status={
-                                latestAiMessage.status === "read"
-                                  ? "read"
-                                  : latestAiMessage.status === "delivered"
-                                  ? "delivered"
-                                  : "sent"
-                              }
-                              size={14}
-                              className="flex-shrink-0 mr-0.5"
-                            />
-                          )}
-                          <span className="truncate">{aiSnippetText}</span>
-                        </>
-                      ) : (
-                        <span className="truncate">Always here to assist</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* Conversation Items */}
             {isLoading ? (
               <ChatListSkeleton count={6} />
