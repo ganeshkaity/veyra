@@ -7,6 +7,8 @@ class SoundEffectsManager {
   private ctx: AudioContext | null = null;
   private ringInterval: NodeJS.Timeout | null = null;
   private dialInterval: NodeJS.Timeout | null = null;
+  private incomingAudio: HTMLAudioElement | null = null;
+  private gestureCleanup: (() => void) | null = null;
 
   private getAudioContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -22,11 +24,79 @@ class SoundEffectsManager {
     return this.ctx;
   }
 
+  private removeGestureListener(): void {
+    if (this.gestureCleanup) {
+      this.gestureCleanup();
+      this.gestureCleanup = null;
+    }
+  }
+
   /**
-   * Starts playing a telephone ringing sound for incoming calls
+   * Starts playing the custom ringtone audio file for incoming calls
+   * Uses public/assets/ringtone.mpeg with Web Audio fallback if autoplay is restricted
    */
   public startIncomingRingtone(): void {
     this.stopAllSounds();
+
+    if (typeof window !== "undefined") {
+      try {
+        const audio = new Audio("/assets/ringtone.mpeg");
+        audio.loop = true;
+        audio.volume = 1.0;
+        audio.preload = "auto";
+        this.incomingAudio = audio;
+
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              // Custom MPEG ringtone playing successfully
+            })
+            .catch((err) => {
+              console.warn("MPEG ringtone autoplay blocked by browser, waiting for user gesture:", err);
+              // Fallback to synthesized ring while waiting for user interaction
+              this.playSyntheticRingLoop();
+
+              // As soon as user touches or clicks anywhere, start the custom MPEG ringtone
+              const onUserGesture = () => {
+                if (this.incomingAudio) {
+                  this.incomingAudio.play().then(() => {
+                    // Custom MPEG ringtone started, cancel synthetic fallback
+                    if (this.ringInterval) {
+                      clearInterval(this.ringInterval);
+                      this.ringInterval = null;
+                    }
+                  }).catch(() => {});
+                }
+                this.removeGestureListener();
+              };
+
+              window.addEventListener("click", onUserGesture, { once: true });
+              window.addEventListener("touchstart", onUserGesture, { once: true });
+              window.addEventListener("keydown", onUserGesture, { once: true });
+
+              this.gestureCleanup = () => {
+                window.removeEventListener("click", onUserGesture);
+                window.removeEventListener("touchstart", onUserGesture);
+                window.removeEventListener("keydown", onUserGesture);
+              };
+            });
+        }
+        return;
+      } catch (err) {
+        console.warn("Failed to initialize custom ringtone audio:", err);
+      }
+    }
+
+    // Fallback to Web Audio API synthesized ringing if audio element fails
+    this.playSyntheticRingLoop();
+  }
+
+  /**
+   * Web Audio API synthesized phone ring fallback
+   */
+  private playSyntheticRingLoop(): void {
+    if (this.ringInterval) return;
 
     const playRingCycle = () => {
       const ctx = this.getAudioContext();
@@ -34,8 +104,6 @@ class SoundEffectsManager {
 
       try {
         const now = ctx.currentTime;
-
-        // Two frequencies for standard pleasant phone ring (440Hz + 480Hz)
         const osc1 = ctx.createOscillator();
         const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -45,7 +113,6 @@ class SoundEffectsManager {
         osc2.type = "sine";
         osc2.frequency.setValueAtTime(480, now);
 
-        // Ring 1s, pause 0.3s, ring 1s, pause 1.7s (3s total)
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
         gain.gain.setValueAtTime(0.15, now + 0.8);
@@ -174,6 +241,14 @@ class SoundEffectsManager {
    * Stops all running sound loops (ringtone, dial tone)
    */
   public stopAllSounds(): void {
+    this.removeGestureListener();
+    if (this.incomingAudio) {
+      try {
+        this.incomingAudio.pause();
+        this.incomingAudio.currentTime = 0;
+      } catch (_) {}
+      this.incomingAudio = null;
+    }
     if (this.ringInterval) {
       clearInterval(this.ringInterval);
       this.ringInterval = null;

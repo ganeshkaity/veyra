@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { NavigationTab } from "@/constants/brand";
 import { Conversation } from "@/types";
-import { subscribeToConversations } from "@/lib/firestore/conversationService";
+import { subscribeToConversations, markConversationAsRead } from "@/lib/firestore/conversationService";
 import { getVeyraAiConversation, VEYRA_AI_CONVERSATION_ID } from "@/lib/ai/aiService";
 import { DesktopSidebarNav } from "@/components/chat/DesktopSidebarNav";
 import { MobileBottomNav } from "@/components/chat/MobileBottomNav";
@@ -100,6 +100,10 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
     if (!id) {
       handleCloseConversation();
       return;
+    }
+
+    if (user?.uid) {
+      markConversationAsRead(id, user.uid);
     }
 
     if (id === selectedConversationId) return;

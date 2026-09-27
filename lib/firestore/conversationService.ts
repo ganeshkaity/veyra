@@ -289,7 +289,21 @@ export async function markConversationAsRead(
       updates["lastMessage.status"] = "read";
     }
 
-    await setDoc(convRef, updates, { merge: true });
+    try {
+      await updateDoc(convRef, updates);
+    } catch (_) {
+      await setDoc(
+        convRef,
+        {
+          unreadCount: {
+            ...(convData?.unreadCount || {}),
+            [uid]: 0,
+          },
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+    }
 
     // Mark recipient messages as read in the messages subcollection
     if (!resolvedConvId.startsWith("ai_") && !resolvedConvId.startsWith("conv_veyra_ai")) {
@@ -311,14 +325,21 @@ export async function markConversationAsUnread(
       : conversationId;
   try {
     const convRef = doc(db, "conversations", resolvedConvId);
-    await setDoc(
-      convRef,
-      {
+    try {
+      await updateDoc(convRef, {
         [`unreadCount.${uid}`]: 1,
         updatedAt: Date.now(),
-      },
-      { merge: true }
-    );
+      });
+    } catch (_) {
+      await setDoc(
+        convRef,
+        {
+          unreadCount: { [uid]: 1 },
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+    }
   } catch (err) {
     console.warn("Failed to mark conversation as unread:", err);
   }
@@ -387,12 +408,17 @@ export async function sendMessage(
   const newMsgRef = doc(messagesRef);
   const now = Date.now();
 
+  const isSystemMessage =
+    message.type === "system" ||
+    message.senderId === "system" ||
+    message.senderName === "Veyra System";
+
   const fullMessage: ChatMessage = cleanFirestoreData({
     ...message,
     id: newMsgRef.id,
     createdAt: now,
     updatedAt: now,
-    status: "sent",
+    status: isSystemMessage ? "read" : "sent",
     isEdited: false,
     edited: false,
     isDeletedForEveryone: false,
@@ -427,18 +453,20 @@ export async function sendMessage(
           senderId: message.senderId,
           timestamp: now,
           type: message.type,
-          status: "sent",
+          status: isSystemMessage ? "read" : "sent",
         },
         updatedAt: now,
       };
 
-      // Increment unread count for other participants
-      (convData.participantIds || []).forEach((pid) => {
-        if (pid !== message.senderId) {
-          const prev = convData.unreadCount?.[pid] || 0;
-          updates[`unreadCount.${pid}`] = prev + 1;
-        }
-      });
+      // Increment unread count for other participants ONLY if not a system message
+      if (!isSystemMessage) {
+        (convData.participantIds || []).forEach((pid) => {
+          if (pid !== message.senderId) {
+            const prev = convData.unreadCount?.[pid] || 0;
+            updates[`unreadCount.${pid}`] = prev + 1;
+          }
+        });
+      }
 
       // If conversation was deleted by participants, restore it on new activity
       if (convData.deletedBy && convData.deletedBy.length > 0) {

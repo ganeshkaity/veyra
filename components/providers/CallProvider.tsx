@@ -36,6 +36,27 @@ import { callSounds } from "@/lib/webrtc/audioContextHelper";
 import { sendMessage } from "@/lib/firestore/conversationService";
 import { VoiceCallModal } from "@/components/call/VoiceCallModal";
 
+/**
+ * Enhances Opus audio SDP parameters for low latency and crystal-clear voice:
+ * - minptime=10: lowers packet framing to 10ms to eliminate delay/lag
+ * - useinbandfec=1: enables Forward Error Correction to eliminate packet drop stutter
+ * - maxaveragebitrate=64000: guarantees high-fidelity, uncompressed voice transmission
+ */
+function optimizeAudioSdp(sdp: string): string {
+  if (!sdp) return sdp;
+  return sdp.replace(/a=fmtp:(\d+)(.*)/g, (match, pt, params) => {
+    if (sdp.includes(`a=rtpmap:${pt} opus/48000`)) {
+      let p = params || "";
+      if (!p.includes("minptime=")) p += ";minptime=10";
+      if (!p.includes("useinbandfec=")) p += ";useinbandfec=1";
+      if (!p.includes("maxaveragebitrate=")) p += ";maxaveragebitrate=64000";
+      if (!p.includes("stereo=")) p += ";stereo=0";
+      return `a=fmtp:${pt}${p}`;
+    }
+    return match;
+  });
+}
+
 const CallContext = createContext<CallContextType | null>(null);
 
 export const useCall = (): CallContextType => {
@@ -114,9 +135,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (navigator?.mediaDevices?.getUserMedia) {
       return await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: true,   // Essential acoustic echo cancellation
+          noiseSuppression: false,  // Remove heavy noise gate filter that clips voice and creates lag
+          autoGainControl: false,   // Remove gain pumping filter that delays voice
+          channelCount: 1,
         },
         video: false,
       });
@@ -136,8 +158,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           {
             audio: {
               echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
+              noiseSuppression: false,
+              autoGainControl: false,
             },
             video: false,
           },
@@ -148,7 +170,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     throw new Error(
-      "Microphone access is not supported or blocked in this browser context (HTTPS required)."
+      "Microphone access is not supported or blocked in this browser context."
     );
   };
 
@@ -491,11 +513,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
       });
-      await pc.setLocalDescription(offer);
+      const optimizedSdp = optimizeAudioSdp(offer.sdp || "");
+      await pc.setLocalDescription({
+        type: offer.type,
+        sdp: optimizedSdp,
+      });
 
       const offerPayload = {
         type: offer.type,
-        sdp: offer.sdp || "",
+        sdp: optimizedSdp,
       };
 
       initialCallData.offer = offerPayload;
@@ -667,11 +693,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
             const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+            const optimizedSdp = optimizeAudioSdp(answer.sdp || "");
+            await pc.setLocalDescription({
+              type: answer.type,
+              sdp: optimizedSdp,
+            });
 
             await setCallAnswer(callId, {
               type: answer.type,
-              sdp: answer.sdp || "",
+              sdp: optimizedSdp,
             });
 
             await updateCallStatus(callId, "connected", { startedAt: Date.now() });
@@ -802,12 +832,20 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     >
       {children}
 
-      {/* Hidden audio element for WebRTC remote stream playback */}
+      {/* Active audio element for WebRTC remote stream playback */}
       <audio
         ref={remoteAudioRef}
         autoPlay
         playsInline
-        className="hidden pointer-events-none"
+        style={{
+          position: "fixed",
+          top: -9999,
+          left: -9999,
+          width: 1,
+          height: 1,
+          opacity: 0.001,
+          pointerEvents: "none",
+        }}
         aria-hidden="true"
       />
 

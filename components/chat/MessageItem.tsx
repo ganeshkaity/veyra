@@ -596,9 +596,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   return (
     <div
       id={`msg-${message.id}`}
-      data-message-id={message.id}
+      data-message-id={isSystem ? undefined : message.id}
       data-sender-id={message.senderId}
-      data-status={message.status}
+      data-status={isSystem ? "read" : message.status}
       className={`flex flex-col relative transition-all duration-300 rounded-2xl ${
         hasReactions ? "z-20 mb-2.5" : "z-10"
       } ${

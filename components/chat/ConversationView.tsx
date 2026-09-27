@@ -321,6 +321,13 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
     return () => unsubscribe();
   }, [conversation.id, messageLimit, currentUser.uid]);
 
+  // Mark conversation as read on initial open
+  useEffect(() => {
+    if (conversation?.id && currentUser?.uid) {
+      markConversationAsRead(conversation.id, currentUser.uid);
+    }
+  }, [conversation?.id, currentUser?.uid]);
+
   // Read receipts: Track messages actually viewed in viewport using IntersectionObserver and bounds checking
   const pendingReadSetRef = useRef<Set<string>>(new Set());
   const readFlushTimeoutRef = useRef<NodeJS.Timeout | null>(null);

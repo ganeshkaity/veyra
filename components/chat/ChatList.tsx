@@ -397,6 +397,18 @@ export const ChatList: React.FC<ChatListProps> = ({
       showToast("No chats found");
       return;
     }
+
+    // Optimistically zero out unreadCount for current user across all conversations immediately
+    conversations.forEach((c) => {
+      if (c.unreadCount && (c.unreadCount[currentUser.uid] || 0) > 0) {
+        c.unreadCount[currentUser.uid] = 0;
+      }
+      if (c.lastMessage && c.lastMessage.senderId !== currentUser.uid) {
+        c.lastMessage.status = "read";
+      }
+    });
+    onArchiveToggle?.();
+
     await Promise.allSettled(
       conversations.map((c) => markConversationAsRead(c.id, currentUser.uid))
     );
@@ -832,6 +844,20 @@ export const ChatList: React.FC<ChatListProps> = ({
     setShowSelectionMoreMenu(false);
     const ids = Array.from(selectedChatIds);
     handleExitSelectionMode();
+
+    // Optimistically update in memory
+    conversations.forEach((c) => {
+      if (ids.includes(c.id)) {
+        if (c.unreadCount && (c.unreadCount[currentUser.uid] || 0) > 0) {
+          c.unreadCount[currentUser.uid] = 0;
+        }
+        if (c.lastMessage && c.lastMessage.senderId !== currentUser.uid) {
+          c.lastMessage.status = "read";
+        }
+      }
+    });
+    onArchiveToggle?.();
+
     await Promise.allSettled(
       ids.map((id) => markConversationAsRead(id, currentUser.uid))
     );
