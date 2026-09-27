@@ -71,6 +71,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentRoleRef = useRef<CallRole | null>(null);
   const currentCallRef = useRef<CallData | null>(null);
   const callStateRef = useRef<CallState>("idle");
+  const incomingCallRef = useRef<IncomingCallNotification | null>(null);
+  const activeCallIdRef = useRef<string | null>(null);
 
   // Keep refs in sync with state for callbacks
   useEffect(() => {
@@ -80,6 +82,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  useEffect(() => {
+    incomingCallRef.current = incomingCall;
+  }, [incomingCall]);
 
   // Format call duration as mm:ss (or hh:mm:ss if > 1 hour)
   const formatDuration = (secs: number): string => {
@@ -252,6 +258,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Clear RTDB data
+      activeCallIdRef.current = null;
       if (activeCall?.callId) {
         purgeCallData(activeCall.callId, activeCall.receiverId);
       }
@@ -266,6 +273,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsMuted(false);
         setDuration(0);
         currentRoleRef.current = null;
+        activeCallIdRef.current = null;
       }, pauseDuration);
     },
     [cleanupMediaAndPeer, duration, user]
@@ -301,23 +309,45 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
 
     const unsub = listenForIncomingCall(user.uid, (notification) => {
-      // If no notification or already in active call
       if (!notification) {
-        // If an incoming call was ringing and caller cancelled it:
-        if (incomingCall && callStateRef.current === "idle") {
+        if (incomingCallRef.current && callStateRef.current === "idle") {
           callSounds.stopAllSounds();
           setIncomingCall(null);
         }
         return;
       }
 
-      // If user is currently in another call, mark busy
-      if (callStateRef.current !== "idle" && callStateRef.current !== "ended") {
+      // Check if user is currently engaged in an active ongoing call
+      const isOngoingActiveCall =
+        callStateRef.current === "calling" ||
+        callStateRef.current === "ringing" ||
+        callStateRef.current === "connecting" ||
+        callStateRef.current === "connected";
+
+      const isSameCall =
+        activeCallIdRef.current === notification.callId ||
+        currentCallRef.current?.callId === notification.callId;
+
+      // Only reject if user is actually on a call with a different peer
+      if (isOngoingActiveCall && !isSameCall) {
         updateCallStatus(notification.callId, "busy", {
           endReason: "User is busy on another call",
         });
         clearReceiverIncomingCall(user.uid);
         return;
+      }
+
+      // If user was previously in a terminal post-call state (ended/declined/failed/missed/busy),
+      // cancel the dismissal timeout and reset media so the incoming call can be received
+      if (resetIdleTimerRef.current) {
+        clearTimeout(resetIdleTimerRef.current);
+        resetIdleTimerRef.current = null;
+      }
+
+      if (!isOngoingActiveCall) {
+        cleanupMediaAndPeer();
+        setCallState("idle");
+        setCurrentCall(null);
       }
 
       // Start ringing for incoming call
@@ -352,7 +382,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsub();
       callSounds.stopAllSounds();
     };
-  }, [user, incomingCall]);
+  }, [user?.uid, cleanupMediaAndPeer]);
 
   /**
    * Start an outgoing 1-to-1 voice call
@@ -371,11 +401,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("You cannot call yourself.");
     }
 
-    if (callState !== "idle") {
+    const isOngoingCall =
+      callStateRef.current === "calling" ||
+      callStateRef.current === "ringing" ||
+      callStateRef.current === "connecting" ||
+      callStateRef.current === "connected";
+
+    if (isOngoingCall) {
       throw new Error("You are already on an active call.");
     }
 
+    if (resetIdleTimerRef.current) {
+      clearTimeout(resetIdleTimerRef.current);
+      resetIdleTimerRef.current = null;
+    }
+    cleanupMediaAndPeer();
+
     const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    activeCallIdRef.current = callId;
     currentRoleRef.current = "caller";
 
     const initialCallData: CallData = {
@@ -536,7 +579,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     callSounds.stopAllSounds();
     const callId = incomingCall.callId;
+    activeCallIdRef.current = callId;
     currentRoleRef.current = "receiver";
+
+    // Clear incoming call from RTDB immediately so no duplicate listener triggers
+    await clearReceiverIncomingCall(user.uid);
+
+    setCurrentCall({
+      callId,
+      conversationId: incomingCall.conversationId,
+      callerId: incomingCall.callerId,
+      callerName: incomingCall.callerName,
+      callerAvatar: incomingCall.callerAvatar,
+      receiverId: user.uid,
+      receiverName: profile?.displayName || "Receiver",
+      receiverAvatar: profile?.avatarUrl || "",
+      status: "connecting",
+      createdAt: incomingCall.createdAt,
+    });
 
     setCallState("connecting");
     setIncomingCall(null);
@@ -658,6 +718,29 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * End an ongoing call or cancel outgoing calling
    */
   const endCall = async (): Promise<void> => {
+    // If in a terminal post-call state (failed, ended, declined, missed, busy), immediately reset to idle
+    if (
+      callStateRef.current === "ended" ||
+      callStateRef.current === "declined" ||
+      callStateRef.current === "missed" ||
+      callStateRef.current === "failed" ||
+      callStateRef.current === "busy"
+    ) {
+      if (resetIdleTimerRef.current) {
+        clearTimeout(resetIdleTimerRef.current);
+        resetIdleTimerRef.current = null;
+      }
+      cleanupMediaAndPeer();
+      setCallState("idle");
+      setCurrentCall(null);
+      setIncomingCall(null);
+      setIsMuted(false);
+      setDuration(0);
+      currentRoleRef.current = null;
+      activeCallIdRef.current = null;
+      return;
+    }
+
     const activeCall = currentCallRef.current;
     if (activeCall?.callId) {
       await updateCallStatus(activeCall.callId, "ended", { endedAt: Date.now() });
