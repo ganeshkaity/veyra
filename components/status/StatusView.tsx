@@ -260,14 +260,6 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
             >
               <Icon name="edit" size="sm" />
             </button>
-            <button
-              type="button"
-              onClick={() => setIsVideoComingSoonOpen(true)}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors active:scale-95"
-              title="Video status (Coming Soon)"
-            >
-              <Icon name="videocam" size="sm" />
-            </button>
           </div>
         </div>
 

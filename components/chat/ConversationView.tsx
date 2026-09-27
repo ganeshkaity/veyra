@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MessageListSkeleton } from "@/components/ui/Skeleton";
 import { VeyraAiWelcomeCard } from "@/components/ai/VeyraAiWelcomeCard";
 import { UniversalChatWallpaper } from "./UniversalChatWallpaper";
+import { WhatsAppForwardIcon } from "./WhatsAppForwardIcon";
 import {
   sendPromptToVeyraAi,
   AiChatMessage,
@@ -33,6 +34,8 @@ import {
   markConversationAsRead,
   markMessagesAsDelivered,
   markSpecificMessagesAsRead,
+  starMultipleMessages,
+  deleteMultipleMessages,
 } from "@/lib/firestore/conversationService";
 import {
   subscribeToUserPresence,
@@ -73,10 +76,17 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [forwardingMessages, setForwardingMessages] = useState<ChatMessage[]>([]);
   const [viewerMessage, setViewerMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [actionErrorToast, setActionErrorToast] = useState<string | null>(null);
+
+  // Message Selection state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false);
+  const [deleteStarredInSelection, setDeleteStarredInSelection] = useState(false);
 
   // Presence & Typing
   const [presence, setPresence] = useState<UserPresence | null>(null);
@@ -88,16 +98,170 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
   const isNearBottomRef = useRef<boolean>(true);
+  const showDetailsRef = useRef<boolean>(false);
+  showDetailsRef.current = showDetails;
+
+  // In-chat Search state
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+
+  // In-chat search matching messages (chronological order)
+  const searchMatches = React.useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return messages.filter(
+      (m) =>
+        m.text?.toLowerCase().includes(q) ||
+        m.senderName?.toLowerCase().includes(q)
+    );
+  }, [messages, searchQuery]);
+
+  // Keep match index bounded when matches change
+  useEffect(() => {
+    if (searchMatches.length === 0) {
+      setCurrentMatchIndex(0);
+    } else if (currentMatchIndex >= searchMatches.length) {
+      setCurrentMatchIndex(searchMatches.length - 1);
+    }
+  }, [searchMatches.length, currentMatchIndex]);
+
+  // Scroll to current search match
+  const scrollToMatch = (index: number) => {
+    if (searchMatches.length === 0 || index < 0 || index >= searchMatches.length) return;
+    const targetMatch = searchMatches[index];
+    if (!targetMatch) return;
+    const el = document.getElementById(`msg-${targetMatch.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  const handleNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    const nextIdx = (currentMatchIndex + 1) % searchMatches.length;
+    setCurrentMatchIndex(nextIdx);
+    scrollToMatch(nextIdx);
+  };
+
+  const handlePrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prevIdx = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    setCurrentMatchIndex(prevIdx);
+    scrollToMatch(prevIdx);
+  };
+
+  // Selection mode entry and exit without page reload
+  const handleOpenSelectionMode = () => {
+    setIsSelectionMode(true);
+    setSelectedMessageIds(new Set());
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("chat_selection", "true");
+      window.history.pushState({ chatSelection: true }, "", url.toString());
+    }
+  };
+
+  const handleExitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedMessageIds(new Set());
+    setShowDeleteSelectedConfirm(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("chat_selection")) {
+        url.searchParams.delete("chat_selection");
+        window.history.replaceState({ chatSelection: false }, "", url.toString());
+      }
+    }
+  };
+
+  const handleToggleSelectMessage = (msgId: string) => {
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) {
+        next.delete(msgId);
+      } else {
+        next.add(msgId);
+      }
+      return next;
+    });
+  };
+
+  // History sync for Contact Info: /chat/info without full page reload
+  const handleOpenDetails = () => {
+    setShowDetails(true);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const searchParams = url.search;
+      const stateObj = {
+        ...(window.history.state || {}),
+        __NA: true,
+        panel: "info",
+      };
+      window.history.pushState(stateObj, "", `/chat/info${searchParams}`);
+    }
+  };
+
+  const handleCloseDetails = () => {
+    setShowDetails(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const searchParams = url.search;
+      const stateObj = {
+        ...(window.history.state || {}),
+        __NA: true,
+        panel: null,
+      };
+      // Cleanly replace URL back to /chat without triggering popstate or Next.js App Router route reload
+      window.history.replaceState(stateObj, "", `/chat${searchParams}`);
+    }
+  };
+
+  // Intercept back button popstate in CAPTURE phase (useCapture: true)
+  // This intercepts back navigation and prevents Next.js App Router from detecting cross-route change and reloading!
+  useEffect(() => {
+    const handlePopStateCapture = (e: PopStateEvent) => {
+      if (showDetailsRef.current) {
+        // Intercept and stop propagation to prevent Next.js from reloading the page
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setShowDetails(false);
+        return;
+      }
+
+      if (!window.location.search.includes("chat_selection=true")) {
+        setIsSelectionMode(false);
+        setSelectedMessageIds(new Set());
+        setShowDeleteSelectedConfirm(false);
+      } else {
+        setIsSelectionMode(true);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopStateCapture, true);
+    return () => window.removeEventListener("popstate", handlePopStateCapture, true);
+  }, []);
+
+  // Check URL on load for chat_selection
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("chat_selection=true")) {
+      setIsSelectionMode(true);
+    }
+  }, []);
 
   // Determine other user's UID for 1-to-1 presence
   const otherUid = conversation.participantIds.find((id) => id !== currentUser.uid);
 
-  // Reset pagination when conversation changes
+  // Reset pagination and selection when conversation changes
   useEffect(() => {
     setMessageLimit(25);
     setHasMore(false);
     setIsLoadingOlder(false);
     isNearBottomRef.current = true;
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    setIsSelectionMode(false);
+    setSelectedMessageIds(new Set());
   }, [conversation.id]);
 
   // Subscribe to real-time messages with dynamic limit (lazy loading)
@@ -457,6 +621,92 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
     });
   };
 
+  const clearedAt = conversation.clearedAt?.[currentUser.uid] || 0;
+  const visibleMessages = React.useMemo(() => {
+    return messages.filter((m) => {
+      if (m.deletedForUsers?.includes(currentUser.uid)) return false;
+      if (clearedAt > 0 && m.createdAt <= clearedAt) return false;
+      return true;
+    });
+  }, [messages, currentUser.uid, clearedAt]);
+
+  const selectedMessagesList = React.useMemo(() => {
+    return visibleMessages.filter((m) => selectedMessageIds.has(m.id));
+  }, [visibleMessages, selectedMessageIds]);
+
+  const hasNonImageSelected = React.useMemo(() => {
+    return selectedMessagesList.some((m) => m.type !== "image" || !m.mediaUrl);
+  }, [selectedMessagesList]);
+
+  const isDownloadDisabled = selectedMessagesList.length === 0 || hasNonImageSelected;
+
+  const allSelectedAreStarred =
+    selectedMessagesList.length > 0 &&
+    selectedMessagesList.every((m) => m.starredBy?.includes(currentUser.uid));
+
+  const handleStarSelected = async () => {
+    if (selectedMessageIds.size === 0) return;
+    const ids = Array.from(selectedMessageIds);
+    await starMultipleMessages(conversation.id, ids, currentUser.uid, !allSelectedAreStarred);
+    handleExitSelectionMode();
+  };
+
+  const handleDeleteSelectedMessages = () => {
+    if (selectedMessageIds.size === 0) return;
+    setDeleteStarredInSelection(false);
+    setShowDeleteSelectedConfirm(true);
+  };
+
+  const handleConfirmDeleteSelected = async () => {
+    if (selectedMessageIds.size === 0) return;
+    let targetIds = Array.from(selectedMessageIds);
+    if (!deleteStarredInSelection) {
+      targetIds = selectedMessagesList
+        .filter((m) => !m.starredBy?.includes(currentUser.uid))
+        .map((m) => m.id);
+    }
+    setShowDeleteSelectedConfirm(false);
+    handleExitSelectionMode();
+    if (targetIds.length > 0) {
+      await deleteMultipleMessages(conversation.id, targetIds);
+    }
+  };
+
+  const handleForwardSelected = () => {
+    if (selectedMessagesList.length === 0) return;
+    setForwardingMessages(selectedMessagesList);
+    handleExitSelectionMode();
+  };
+
+  const handleDownloadSelected = async () => {
+    if (isDownloadDisabled) return;
+    for (const msg of selectedMessagesList) {
+      if (msg.mediaUrl) {
+        try {
+          const response = await fetch(msg.mediaUrl);
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = msg.mediaMetadata?.fileName || `image-${msg.id}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(blobUrl);
+        } catch {
+          const a = document.createElement("a");
+          a.href = msg.mediaUrl;
+          a.target = "_blank";
+          a.download = msg.mediaMetadata?.fileName || `image-${msg.id}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      }
+    }
+    handleExitSelectionMode();
+  };
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Main Conversation Column */}
@@ -469,8 +719,29 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
           typingList={typingList}
           messages={messages}
           isAiResponding={isAiResponding}
-          onToggleDetails={() => setShowDetails(!showDetails)}
+          onOpenSelectionMode={handleOpenSelectionMode}
+          onToggleDetails={() => {
+            if (showDetails) {
+              handleCloseDetails();
+            } else {
+              handleOpenDetails();
+            }
+          }}
           onBackMobile={onBackMobile}
+          isSearchOpen={isSearchOpen}
+          searchQuery={searchQuery}
+          onSearchChange={(q) => setSearchQuery(q)}
+          onOpenSearch={() => {
+            setIsSearchOpen(true);
+          }}
+          onCloseSearch={() => {
+            setIsSearchOpen(false);
+            setSearchQuery("");
+          }}
+          matchCount={searchMatches.length}
+          currentMatchIndex={currentMatchIndex}
+          onPrevMatch={handlePrevMatch}
+          onNextMatch={handleNextMatch}
         />
 
         {/* Universal Chat Wallpaper Layered Container */}
@@ -501,59 +772,78 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
               </div>
             )}
 
-            {isLoadingMessages ? (
-              <MessageListSkeleton />
-            ) : messages.length > 0 ? (
-              messages.map((msg, idx) => {
-                const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
-                const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : undefined;
+            {(() => {
+              if (isLoadingMessages) {
+                return <MessageListSkeleton />;
+              }
 
-                const showDate = getDateLabel(
-                  new Date(msg.createdAt),
-                  prevMsg ? new Date(prevMsg.createdAt) : undefined
-                );
+              if (visibleMessages.length > 0) {
+                return visibleMessages.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? visibleMessages[idx - 1] : undefined;
+                  const nextMsg = idx < visibleMessages.length - 1 ? visibleMessages[idx + 1] : undefined;
 
-                const isSameSenderAsPrev =
-                  !showDate &&
-                  prevMsg?.senderId === msg.senderId &&
-                  msg.createdAt - prevMsg.createdAt < 5 * 60 * 1000;
+                  const showDate = getDateLabel(
+                    new Date(msg.createdAt),
+                    prevMsg ? new Date(prevMsg.createdAt) : undefined
+                  );
 
-                const isSameSenderAsNext =
-                  nextMsg?.senderId === msg.senderId &&
-                  nextMsg.createdAt - msg.createdAt < 5 * 60 * 1000 &&
-                  !getDateLabel(new Date(nextMsg.createdAt), new Date(msg.createdAt));
+                  const isSameSenderAsPrev =
+                    !showDate &&
+                    prevMsg?.senderId === msg.senderId &&
+                    msg.createdAt - prevMsg.createdAt < 5 * 60 * 1000;
 
-                const isFirstInGroup = !isSameSenderAsPrev;
-                const isLastInGroup = !isSameSenderAsNext;
+                  const isSameSenderAsNext =
+                    nextMsg?.senderId === msg.senderId &&
+                    nextMsg.createdAt - msg.createdAt < 5 * 60 * 1000 &&
+                    !getDateLabel(new Date(nextMsg.createdAt), new Date(msg.createdAt));
 
-                return (
-                  <MessageItem
-                    key={msg.id}
-                    message={msg}
-                    currentUser={currentUser}
-                    showDateSeparator={showDate}
-                    isFirstInGroup={isFirstInGroup}
-                    isLastInGroup={isLastInGroup}
-                    isGroup={conversation.type === "group"}
-                    onReply={(m) => setReplyingTo(m)}
-                    onForward={(m) => setForwardingMessage(m)}
-                    onEdit={handleStartEdit}
-                    onDeleteForEveryone={handleDeleteForEveryone}
-                    onDeleteForMe={handleDeleteForMe}
-                    onOpenImageViewer={(m) => setViewerMessage(m)}
-                  />
-                );
-              })
-            ) : conversation.type === "ai" ? (
-              <VeyraAiWelcomeCard onSelectPrompt={(p) => handleSendMessage(p)} />
-            ) : (
-              <EmptyState
-                icon="mark_chat_unread"
-                title="Start the conversation."
-                description="Send a message, sticker, or photo to break the ice!"
-                className="my-auto"
-              />
-            )}
+                  const isFirstInGroup = !isSameSenderAsPrev;
+                  const isLastInGroup = !isSameSenderAsNext;
+
+                  const isMatch = Boolean(searchQuery.trim() && searchMatches.some((m) => m.id === msg.id));
+                  const isCurrent = Boolean(
+                    searchMatches.length > 0 &&
+                    searchMatches[currentMatchIndex]?.id === msg.id
+                  );
+
+                  return (
+                    <MessageItem
+                      key={msg.id}
+                      message={msg}
+                      currentUser={currentUser}
+                      showDateSeparator={showDate}
+                      isFirstInGroup={isFirstInGroup}
+                      isLastInGroup={isLastInGroup}
+                      isGroup={conversation.type === "group"}
+                      isSearchMatch={isMatch}
+                      isCurrentSearchMatch={isCurrent}
+                      isSelectionMode={isSelectionMode}
+                      isSelected={selectedMessageIds.has(msg.id)}
+                      onToggleSelect={() => handleToggleSelectMessage(msg.id)}
+                      onReply={(m) => setReplyingTo(m)}
+                      onForward={(m) => setForwardingMessage(m)}
+                      onEdit={handleStartEdit}
+                      onDeleteForEveryone={handleDeleteForEveryone}
+                      onDeleteForMe={handleDeleteForMe}
+                      onOpenImageViewer={(m) => setViewerMessage(m)}
+                    />
+                  );
+                });
+              }
+
+              if (conversation.type === "ai") {
+                return <VeyraAiWelcomeCard onSelectPrompt={(p) => handleSendMessage(p)} />;
+              }
+
+              return (
+                <EmptyState
+                  icon="mark_chat_unread"
+                  title="Start the conversation."
+                  description="Send a message, sticker, or photo to break the ice!"
+                  className="my-auto"
+                />
+              );
+            })()}
             {/* Veyra AI Thinking Indicator */}
             {isAiResponding && (
               <div className="flex items-center gap-2 p-2.5 px-3.5 rounded-2xl rounded-bl-sm bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 w-fit text-xs shadow-xs animate-in fade-in slide-in-from-bottom-2">
@@ -592,8 +882,85 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
           </div>
         )}
 
-        {/* Input Bar */}
-        <MessageInputBar
+        {/* Input Bar / Selection Bottom Bar */}
+        {isSelectionMode ? (
+          <div className="h-16 px-4 flex items-center justify-between bg-[#F0F2F5] dark:bg-[#1E293B] border-t border-slate-200/80 dark:border-slate-800 select-none z-20">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleExitSelectionMode}
+                className="p-1.5 rounded-full text-slate-700 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                title="Close selection"
+                aria-label="Close selection"
+              >
+                <Icon name="close" size="md" />
+              </button>
+              <span className="text-[15px] font-medium text-slate-800 dark:text-slate-200">
+                {selectedMessageIds.size} selected
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 sm:gap-2">
+              {/* Star / Unstar */}
+              <button
+                type="button"
+                onClick={handleStarSelected}
+                disabled={selectedMessageIds.size === 0}
+                className="p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                title={allSelectedAreStarred ? "Unstar" : "Star"}
+                aria-label="Star"
+              >
+                <Icon
+                  name="star"
+                  size="md"
+                  fill={allSelectedAreStarred}
+                  className={allSelectedAreStarred ? "text-amber-500 fill-amber-500" : ""}
+                />
+              </button>
+
+              {/* Delete selected */}
+              <button
+                type="button"
+                onClick={handleDeleteSelectedMessages}
+                disabled={selectedMessageIds.size === 0}
+                className="p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                title="Delete"
+                aria-label="Delete"
+              >
+                <Icon name="delete" size="md" />
+              </button>
+
+              {/* Forward */}
+              <button
+                type="button"
+                onClick={handleForwardSelected}
+                disabled={selectedMessageIds.size === 0}
+                className="p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                title="Forward"
+                aria-label="Forward"
+              >
+                <WhatsAppForwardIcon className="w-5 h-5" />
+              </button>
+
+              {/* Download */}
+              <button
+                type="button"
+                onClick={handleDownloadSelected}
+                disabled={isDownloadDisabled}
+                className="p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                title={
+                  isDownloadDisabled && selectedMessagesList.length > 0
+                    ? "Download only available for photos"
+                    : "Download"
+                }
+                aria-label="Download"
+              >
+                <Icon name="download" size="md" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <MessageInputBar
             onSendMessage={handleSendMessage}
             onTyping={(isTyping) =>
               setTypingStatus(
@@ -622,6 +989,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
             onCancelReply={() => setReplyingTo(null)}
             isAiConversation={conversation.type === "ai"}
           />
+        )}
         </UniversalChatWallpaper>
 
         {/* Modals */}
@@ -651,11 +1019,64 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
         {/* Forward Message Modal */}
         <ForwardMessageModal
-          isOpen={!!forwardingMessage}
+          isOpen={!!forwardingMessage || forwardingMessages.length > 0}
           message={forwardingMessage}
+          messages={forwardingMessages}
           currentUser={currentUser}
-          onClose={() => setForwardingMessage(null)}
+          onClose={() => {
+            setForwardingMessage(null);
+            setForwardingMessages([]);
+          }}
         />
+
+        {/* Confirmation Modal: Delete Selected Messages */}
+        <Modal
+          isOpen={showDeleteSelectedConfirm}
+          onClose={() => setShowDeleteSelectedConfirm(false)}
+          title={
+            selectedMessageIds.size === 1
+              ? "Delete message?"
+              : `Delete ${selectedMessageIds.size} messages?`
+          }
+          maxWidth="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {selectedMessageIds.size === 1
+                ? "Are you sure you want to permanently delete this message?"
+                : `Are you sure you want to permanently delete these ${selectedMessageIds.size} messages?`}
+            </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={deleteStarredInSelection}
+                onChange={(e) => setDeleteStarredInSelection(e.target.checked)}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDeleteSelectedConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleConfirmDeleteSelected}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Image Viewer Lightbox Modal */}
         <ImageViewerModal
@@ -713,8 +1134,10 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
         conversation={conversation}
         currentUser={currentUser}
         isOpen={showDetails}
-        onClose={() => setShowDetails(false)}
+        onClose={handleCloseDetails}
         onGroupDeletedOrLeft={onBackMobile}
+        messages={messages}
+        onOpenImageViewer={(m) => setViewerMessage(m)}
       />
     </div>
   );

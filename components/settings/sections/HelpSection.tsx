@@ -58,11 +58,11 @@ export const HelpSection: React.FC<HelpSectionProps> = ({ onBack }) => {
           </p>
           <div className="pt-1">
             <a
-              href="mailto:support@veyra.app"
+              href="mailto:ganeshkaity1978@gmail.com"
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-[#2563EB] transition-colors"
             >
               <Icon name="mail" size="xs" />
-              <span>Email Support (support@veyra.app)</span>
+              <span>Email Support</span>
             </a>
           </div>
         </div>

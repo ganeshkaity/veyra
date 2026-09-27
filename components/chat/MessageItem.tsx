@@ -10,6 +10,7 @@ import { StickerMessage } from "./media/StickerMessage";
 import { ChatMessageMarkdown, copyToClipboard } from "./ChatMessageMarkdown";
 import { WhatsAppForwardIcon } from "./WhatsAppForwardIcon";
 import { MessageStatusTick } from "./MessageStatusTick";
+import { toggleStarMessage } from "@/lib/firestore/conversationService";
 
 // Global trackers across all message items to avoid reopening loops upon backdrop tap/click dismissals
 let globalMenuClosedAt = 0;
@@ -22,6 +23,11 @@ interface MessageItemProps {
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
   isGroup?: boolean;
+  isSearchMatch?: boolean;
+  isCurrentSearchMatch?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (messageId: string) => void;
   onReply: (message: ChatMessage) => void;
   onForward: (message: ChatMessage) => void;
   onEdit: (message: ChatMessage) => void;
@@ -37,6 +43,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   isFirstInGroup = true,
   isLastInGroup = true,
   isGroup = false,
+  isSearchMatch = false,
+  isCurrentSearchMatch = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelect,
   onReply,
   onForward,
   onEdit,
@@ -60,7 +71,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
   const [isPinned, setIsPinned] = useState(false);
-  const [isStarred, setIsStarred] = useState(false);
+  const isStarred = Boolean(message.starredBy?.includes(currentUser.uid));
 
   // Swipe-to-reply & Long-press touch tracking
   const touchStartXRef = useRef(0);
@@ -418,14 +429,20 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     setTimeout(() => setToastMessage(null), 2000);
   };
 
-  const handleToggleStar = () => {
+  const handleToggleStar = async () => {
     closeMenu();
-    setIsStarred((prev) => {
-      const next = !prev;
-      setToastMessage(next ? "Message starred" : "Message unstarred");
+    try {
+      const nowStarred = await toggleStarMessage(
+        message.conversationId,
+        message.id,
+        currentUser.uid
+      );
+      setToastMessage(nowStarred ? "Message starred" : "Message unstarred");
       setTimeout(() => setToastMessage(null), 2000);
-      return next;
-    });
+    } catch {
+      setToastMessage("Failed to update star");
+      setTimeout(() => setToastMessage(null), 2000);
+    }
   };
 
   const handleTogglePin = () => {
@@ -478,6 +495,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         </svg>
       )}
 
+      {isStarred && (
+        <span title="Starred" className="text-amber-400">
+          <Icon name="star" size="xs" className="!text-[12px]" fill />
+        </span>
+      )}
+
       <span className="font-medium text-[10px] leading-none text-white/95">
         {formatTime(message.createdAt)}
       </span>
@@ -498,10 +521,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
   return (
     <div
+      id={`msg-${message.id}`}
       data-message-id={message.id}
       data-sender-id={message.senderId}
       data-status={message.status}
-      className={`flex flex-col relative ${isFirstInGroup ? "mt-2.5" : "mt-0.5"}`}
+      className={`flex flex-col relative transition-all duration-300 rounded-2xl ${
+        isCurrentSearchMatch
+          ? "ring-2 ring-teal-500/80 bg-teal-500/10 p-1.5 -mx-1.5 shadow-md"
+          : isSearchMatch
+          ? "ring-1 ring-amber-400/60 bg-amber-400/5 p-1 -mx-1"
+          : ""
+      } ${isFirstInGroup ? "mt-2.5" : "mt-0.5"}`}
     >
       {/* Date Separator */}
       {showDateSeparator && (
@@ -526,9 +556,37 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       ) : (
         /* Regular Message Container */
         <div
-          className={`group relative flex items-end gap-1.5 ${isMe ? "justify-end" : "justify-start"
-            }`}
+          onClick={(e) => {
+            if (isSelectionMode) {
+              e.stopPropagation();
+              onToggleSelect?.(message.id);
+            }
+          }}
+          className={`group relative flex items-center gap-2.5 ${isMe ? "justify-end" : "justify-start"} ${
+            isSelectionMode ? "cursor-pointer py-1 px-1 rounded-xl transition-colors hover:bg-black/5 dark:hover:bg-white/5" : ""
+          } ${isSelected ? "bg-emerald-500/10 dark:bg-emerald-500/15" : ""}`}
         >
+          {/* WhatsApp Style Selection Checkbox */}
+          {isSelectionMode && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect?.(message.id);
+              }}
+              className="flex-shrink-0 cursor-pointer self-center p-1 select-none"
+            >
+              <div
+                className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                  isSelected
+                    ? "bg-emerald-500 border-emerald-500 text-white shadow-sm scale-105"
+                    : "border-slate-400/80 dark:border-slate-500 bg-white/60 dark:bg-slate-800/60 hover:border-emerald-500"
+                }`}
+              >
+                {isSelected && <Icon name="check" size="xs" />}
+              </div>
+            </div>
+          )}
+
           {/* Mobile Swipe Reply Indicator Icon */}
           {swipeOffset > 0 && (
             <div
@@ -542,32 +600,34 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             </div>
           )}
 
-          {/* Quick Forward Button (Always visible beside the chat bubble) */}
-          <div
-            className={`flex items-center flex-shrink-0 self-center ${isMe ? "order-first" : "order-last"
-              }`}
-          >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onForward(message);
-              }}
-              className="p-1.5 rounded-full text-slate-400 hover:text-[#2563EB] dark:text-slate-400 dark:hover:text-[#14B8A6] hover:bg-black/5 dark:hover:bg-white/10 active:scale-90 transition-all duration-150 cursor-pointer"
-              title="Forward message"
-              aria-label="Forward message"
+          {/* Quick Forward Button (Hidden in selection mode) */}
+          {!isSelectionMode && (
+            <div
+              className={`flex items-center flex-shrink-0 self-center ${isMe ? "order-first" : "order-last"}`}
             >
-              <WhatsAppForwardIcon className="w-4 h-4" />
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onForward(message);
+                }}
+                className="p-1.5 rounded-full text-slate-400 hover:text-[#2563EB] dark:text-slate-400 dark:hover:text-[#14B8A6] hover:bg-black/5 dark:hover:bg-white/10 active:scale-90 transition-all duration-150 cursor-pointer"
+                title="Forward message"
+                aria-label="Forward message"
+              >
+                <WhatsAppForwardIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {/* Swipeable Bubble Container (Triggers Context Menu on Right Click or Mobile Long Press) */}
           <div
             ref={bubbleRef}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onTouchStart={isSelectionMode ? undefined : handleTouchStart}
+            onTouchMove={isSelectionMode ? undefined : handleTouchMove}
+            onTouchEnd={isSelectionMode ? undefined : handleTouchEnd}
             onContextMenu={(e) => {
+              if (isSelectionMode) return;
               e.preventDefault();
               e.stopPropagation();
               if (Date.now() - globalMenuClosedAt < 450) {
@@ -576,6 +636,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               openMenuWithPosition(e.clientX, e.clientY);
             }}
             onDoubleClick={(e) => {
+              if (isSelectionMode) return;
               e.preventDefault();
               e.stopPropagation();
               if (Date.now() - globalMenuClosedAt < 450) {

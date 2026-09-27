@@ -17,7 +17,8 @@ import { WhatsAppForwardIcon } from "./WhatsAppForwardIcon";
 interface ForwardMessageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  message: ChatMessage | null;
+  message?: ChatMessage | null;
+  messages?: ChatMessage[];
   currentUser: UserProfile;
   onForwardSuccess?: (targetConvId: string) => void;
 }
@@ -26,6 +27,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
   isOpen,
   onClose,
   message,
+  messages,
   currentUser,
   onForwardSuccess,
 }) => {
@@ -102,13 +104,17 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
     return title.toLowerCase().includes(q) || subtitle.toLowerCase().includes(q);
   });
 
+  const targetMessages = messages && messages.length > 0 ? messages : (message ? [message] : []);
+
   // Forward to an existing conversation
   const handleForwardToConversation = async (conv: Conversation) => {
-    if (!message) return;
+    if (targetMessages.length === 0) return;
     try {
       setSendingToId(conv.id);
       setErrorMsg(null);
-      await forwardMessage(conv.id, message, currentUser);
+      for (const msg of targetMessages) {
+        await forwardMessage(conv.id, msg, currentUser);
+      }
       onForwardSuccess?.(conv.id);
       onClose();
     } catch (err: any) {
@@ -121,12 +127,14 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
   // Forward to a searched user (create conversation if needed, then forward)
   const handleForwardToUser = async (targetUser: UserProfile) => {
-    if (!message) return;
+    if (targetMessages.length === 0) return;
     try {
       setSendingToId(targetUser.uid);
       setErrorMsg(null);
       const convId = await createDirectConversation(currentUser, targetUser);
-      await forwardMessage(convId, message, currentUser);
+      for (const msg of targetMessages) {
+        await forwardMessage(convId, msg, currentUser);
+      }
       onForwardSuccess?.(convId);
       onClose();
     } catch (err: any) {
@@ -137,17 +145,23 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
     }
   };
 
-  if (!isOpen || !message) return null;
+  if (!isOpen || targetMessages.length === 0) return null;
+
+  const firstMsg = targetMessages[0];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Forward Message" maxWidth="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={targetMessages.length > 1 ? `Forward ${targetMessages.length} Messages` : "Forward Message"} maxWidth="md">
       <div className="space-y-4">
         {/* Message preview snippet */}
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
-          {message.mediaUrl ? (
+          {targetMessages.length > 1 ? (
+            <div className="w-9 h-9 rounded-lg bg-[#2563EB]/10 dark:bg-[#14B8A6]/10 flex items-center justify-center text-[#2563EB] dark:text-[#14B8A6] flex-shrink-0">
+              <WhatsAppForwardIcon className="w-4 h-4" />
+            </div>
+          ) : firstMsg.mediaUrl ? (
             <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/5 dark:bg-white/5 flex-shrink-0 flex items-center justify-center border border-slate-200/60 dark:border-slate-700/60">
               <img
-                src={message.mediaUrl}
+                src={firstMsg.mediaUrl}
                 alt="Media preview"
                 className="w-full h-full object-cover"
               />
@@ -162,13 +176,15 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
               Forwarding
             </span>
             <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate mt-0.5">
-              {message.type === "image"
-                ? message.text ? `📷 ${message.text}` : "📷 Photo"
-                : message.type === "gif"
+              {targetMessages.length > 1
+                ? `${targetMessages.length} messages selected`
+                : firstMsg.type === "image"
+                ? firstMsg.text ? `📷 ${firstMsg.text}` : "📷 Photo"
+                : firstMsg.type === "gif"
                 ? "👾 GIF"
-                : message.type === "sticker"
-                ? `${message.text || "Sticker"}`
-                : message.text}
+                : firstMsg.type === "sticker"
+                ? `${firstMsg.text || "Sticker"}`
+                : firstMsg.text}
             </p>
           </div>
         </div>

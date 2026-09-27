@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 
+
 export type PlatformType = "android" | "ios" | "desktop" | "other";
 
 interface PwaContextType {
@@ -9,6 +10,7 @@ interface PwaContextType {
   isInstalled: boolean;
   platform: PlatformType;
   installApp: () => Promise<boolean>;
+  triggerNativeInstallPrompt: () => Promise<boolean>;
   openInstallModal: () => void;
   closeInstallModal: () => void;
   isInstallModalOpen: boolean;
@@ -19,6 +21,7 @@ const PwaContext = createContext<PwaContextType>({
   isInstalled: false,
   platform: "other",
   installApp: async () => false,
+  triggerNativeInstallPrompt: async () => false,
   openInstallModal: () => {},
   closeInstallModal: () => {},
   isInstallModalOpen: false,
@@ -71,6 +74,9 @@ export const PwaProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      if (typeof window !== "undefined") {
+        (window as any).__pwaDeferredPrompt = e;
+      }
       setIsInstallable(true);
 
       // On Android / mobile: trigger the native install dialog automatically on the first user interaction
@@ -153,6 +159,26 @@ export const PwaProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
+  const triggerNativeInstallPrompt = async (): Promise<boolean> => {
+    const promptEvent = deferredPrompt || (typeof window !== "undefined" ? (window as any).__pwaDeferredPrompt : null);
+    if (promptEvent) {
+      try {
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
+        if (choice && choice.outcome === "accepted") {
+          setIsInstalled(true);
+          setDeferredPrompt(null);
+          setIsInstallable(false);
+          if (typeof window !== "undefined") (window as any).__pwaDeferredPrompt = null;
+          return true;
+        }
+      } catch (err) {
+        console.error("Native installation prompt error:", err);
+      }
+    }
+    return false;
+  };
+
   return (
     <PwaContext.Provider
       value={{
@@ -160,6 +186,7 @@ export const PwaProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isInstalled,
         platform,
         installApp,
+        triggerNativeInstallPrompt,
         openInstallModal: () => setIsInstallModalOpen(true),
         closeInstallModal: () => setIsInstallModalOpen(false),
         isInstallModalOpen,

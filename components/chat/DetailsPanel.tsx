@@ -24,6 +24,14 @@ import {
 } from "@/lib/firestore/groupService";
 import { uploadAvatar } from "@/lib/storage/imgbbService";
 import { AddGroupMemberModal } from "@/components/groups/AddGroupMemberModal";
+import { clearConversation, deleteConversation } from "@/lib/firestore/conversationService";
+import {
+  isConversationFavourite,
+  toggleConversationFavourite,
+  getEffectiveChatLists,
+  toggleConversationList,
+} from "@/lib/firestore/chatLockAndListService";
+import { ChatMessage } from "@/types";
 
 interface DetailsPanelProps {
   conversation: Conversation;
@@ -31,6 +39,8 @@ interface DetailsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onGroupDeletedOrLeft?: () => void;
+  messages?: ChatMessage[];
+  onOpenImageViewer?: (message: ChatMessage) => void;
 }
 
 export const DetailsPanel: React.FC<DetailsPanelProps> = ({
@@ -39,6 +49,8 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   isOpen,
   onClose,
   onGroupDeletedOrLeft,
+  messages = [],
+  onOpenImageViewer,
 }) => {
   const { showConfirm, showAlert } = useAlert();
   const [presence, setPresence] = useState<UserPresence | null>(null);
@@ -54,6 +66,25 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  // New WhatsApp style options state
+  const [isFavourite, setIsFavourite] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showEncryptionModal, setShowEncryptionModal] = useState(false);
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [showChangeListModal, setShowChangeListModal] = useState(false);
+  const [showStarredModal, setShowStarredModal] = useState(false);
+  const [showClearChatModal, setShowClearChatModal] = useState(false);
+  const [alsoDeleteStarred, setAlsoDeleteStarred] = useState(false);
+
+  useEffect(() => {
+    setIsFavourite(isConversationFavourite(conversation.id, currentUser));
+  }, [conversation.id, currentUser]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
 
   // Selected member menu
   const [activeMemberMenuUid, setActiveMemberMenuUid] = useState<string | null>(null);
@@ -659,6 +690,261 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
         </div>
       )}
 
+      {/* Image 1: WhatsApp Contact Details Options */}
+      {(() => {
+        const clearedAt = conversation.clearedAt?.[currentUser.uid] || 0;
+        const mediaMessages = messages.filter((m) => {
+          if (clearedAt > 0 && m.createdAt <= clearedAt) return false;
+          if (m.deletedForUsers?.includes(currentUser.uid)) return false;
+          return m.type === "image" || Boolean(m.mediaUrl);
+        });
+
+        const starredMessages = messages.filter((m) => {
+          if (clearedAt > 0 && m.createdAt <= clearedAt) return false;
+          if (m.deletedForUsers?.includes(currentUser.uid)) return false;
+          return m.starredBy?.includes(currentUser.uid);
+        });
+
+        const handleExportChat = () => {
+          const visibleMsgs = messages.filter((m) => {
+            if (clearedAt > 0 && m.createdAt <= clearedAt) return false;
+            if (m.deletedForUsers?.includes(currentUser.uid)) return false;
+            return true;
+          });
+
+          if (!visibleMsgs || visibleMsgs.length === 0) {
+            showToast("No messages to export.");
+            return;
+          }
+          const lines = visibleMsgs.map((m) => {
+            const time = new Date(m.createdAt).toLocaleString();
+            const sender = m.senderName || (m.senderId === currentUser.uid ? "You" : name);
+            const content = m.text || (m.mediaUrl ? `[Media: ${m.mediaUrl}]` : `[${m.type}]`);
+            return `[${time}] ${sender}: ${content}`;
+          });
+          const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `Chat_with_${name.replace(/[^a-zA-Z0-9]/g, "_")}.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast("Chat exported successfully 📄");
+        };
+
+        const handleClearChatConfirm = () => {
+          setAlsoDeleteStarred(false);
+          setShowClearChatModal(true);
+        };
+
+        const handleDeleteChatConfirm = async () => {
+          const confirmed = await showConfirm(
+            "Are you sure you want to delete this chat?",
+            { title: "Delete chat?", type: "error", confirmText: "Delete chat" }
+          );
+          if (confirmed) {
+            try {
+              await deleteConversation(conversation.id, currentUser.uid);
+              onClose();
+              onGroupDeletedOrLeft?.();
+            } catch (err: any) {
+              showAlert(err.message || "Failed to delete chat", { type: "error" });
+            }
+          }
+        };
+
+        return (
+          <div className="border-t border-slate-100 dark:border-slate-800 text-sm">
+            {/* 1. Media, links and docs */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
+              <button
+                onClick={() => setShowMediaModal(true)}
+                className="w-full flex items-center justify-between text-left group"
+              >
+                <div className="flex items-center gap-3.5">
+                  <Icon name="photo_library" size="md" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white" />
+                  <span className="font-medium text-slate-800 dark:text-slate-100 text-[14px]">
+                    Media, links and docs
+                  </span>
+                </div>
+                <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300">
+                  {mediaMessages.length}
+                </span>
+              </button>
+
+              {/* Thumbnails preview */}
+              {mediaMessages.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 pt-1">
+                  {mediaMessages.slice(0, 4).map((m, i) => (
+                    <div
+                      key={m.id || i}
+                      onClick={() => onOpenImageViewer?.(m)}
+                      className="aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 cursor-pointer hover:opacity-90 relative group border border-slate-200/50 dark:border-slate-700/50"
+                    >
+                      <img
+                        src={m.mediaUrl}
+                        alt="media preview"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Starred messages */}
+            <div className="py-1">
+              <button
+                onClick={() => setShowStarredModal(true)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
+              >
+                <div className="flex items-center gap-3.5">
+                  <Icon name="star" size="md" className="text-slate-500 dark:text-slate-400 group-hover:text-amber-500 transition-colors" />
+                  <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
+                    Starred messages
+                  </span>
+                </div>
+                {starredMessages.length > 0 && (
+                  <span className="text-xs font-semibold text-slate-400">
+                    {starredMessages.length}
+                  </span>
+                )}
+              </button>
+
+              {/* 3. Disappearing messages */}
+              <button
+                onClick={() => showToast("Disappearing messages: Off")}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors"
+              >
+                <div className="flex items-center gap-3.5">
+                  <Icon name="timelapse" size="md" className="text-slate-500 dark:text-slate-400" />
+                  <div>
+                    <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200 block leading-tight">
+                      Disappearing messages
+                    </span>
+                    <span className="text-xs text-slate-400 block mt-0.5">Off</span>
+                  </div>
+                </div>
+              </button>
+
+              {/* 4. Advanced chat privacy */}
+              <button
+                onClick={() => showToast("Advanced chat privacy: Off")}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors"
+              >
+                <div className="flex items-center gap-3.5">
+                  <Icon name="shield" size="md" className="text-slate-500 dark:text-slate-400" />
+                  <div>
+                    <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200 block leading-tight">
+                      Advanced chat privacy
+                    </span>
+                    <span className="text-xs text-slate-400 block mt-0.5">Off</span>
+                  </div>
+                </div>
+              </button>
+
+              {/* 5. Encryption */}
+              <button
+                onClick={() => setShowEncryptionModal(true)}
+                className="w-full px-4 py-3 flex items-start gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors"
+              >
+                <Icon name="lock" size="md" className="text-slate-500 dark:text-slate-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200 block leading-tight">
+                    Encryption
+                  </span>
+                  <span className="text-xs text-slate-400 block mt-0.5 leading-relaxed">
+                    Messages are end-to-end encrypted. Click to verify.
+                  </span>
+                </div>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <hr className="my-2 border-slate-100 dark:border-slate-800" />
+
+            {/* 6. Add/Remove from favourites */}
+            <div className="py-1">
+              <button
+                onClick={async () => {
+                  const res = await toggleConversationFavourite(
+                    currentUser.uid,
+                    conversation.id,
+                    currentUser
+                  );
+                  setIsFavourite(res.isFavourite);
+                  showToast(res.isFavourite ? "Added to favourites ❤️" : "Removed from favourites");
+                }}
+                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
+              >
+                <Icon
+                  name={isFavourite ? "favorite" : "favorite_border"}
+                  size="md"
+                  className={
+                    isFavourite
+                      ? "text-rose-500"
+                      : "text-slate-500 dark:text-slate-400 group-hover:text-rose-500"
+                  }
+                />
+                <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
+                  {isFavourite ? "Remove from favourites" : "Add to favourites"}
+                </span>
+              </button>
+
+              {/* 7. Change list */}
+              <button
+                onClick={() => setShowChangeListModal(true)}
+                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
+              >
+                <Icon name="folder" size="md" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white" />
+                <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
+                  Change list
+                </span>
+              </button>
+
+              {/* 8. Export chat */}
+              <button
+                onClick={handleExportChat}
+                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors group"
+              >
+                <Icon name="download" size="md" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white" />
+                <span className="font-medium text-[14px] text-slate-800 dark:text-slate-200">
+                  Export chat
+                </span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <hr className="my-2 border-slate-100 dark:border-slate-800" />
+
+            {/* 9. Clear chat & 10. Delete chat (Red actions matching Image 1) */}
+            <div className="py-1">
+              <button
+                onClick={handleClearChatConfirm}
+                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-red-50/50 dark:hover:bg-red-950/20 text-left text-red-600 dark:text-red-400 transition-colors"
+              >
+                <Icon name="remove_circle_outline" size="md" className="text-red-600 dark:text-red-400" />
+                <span className="font-medium text-[14px]">
+                  Clear chat
+                </span>
+              </button>
+
+              <button
+                onClick={handleDeleteChatConfirm}
+                className="w-full px-4 py-3 flex items-center gap-3.5 hover:bg-red-50/50 dark:hover:bg-red-950/20 text-left text-red-600 dark:text-red-400 transition-colors"
+              >
+                <Icon name="delete" size="md" className="text-red-600 dark:text-red-400" />
+                <span className="font-medium text-[14px]">
+                  Delete chat
+                </span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Danger Zone Actions */}
       <div className="p-4 space-y-1 mt-auto">
         {isGroup ? (
@@ -767,6 +1053,270 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Encryption Verification Modal */}
+      <Modal
+        isOpen={showEncryptionModal}
+        onClose={() => setShowEncryptionModal(false)}
+        title="Verify security code"
+        maxWidth="sm"
+      >
+        <div className="space-y-4 py-2 text-center">
+          <div className="w-14 h-14 mx-auto rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+            <Icon name="lock" size="lg" />
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            Messages and calls with <span className="font-semibold text-slate-900 dark:text-white">{name}</span> are protected with end-to-end encryption. Not even Veyra can read or listen to them.
+          </p>
+          <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl font-mono text-xs tracking-widest text-slate-700 dark:text-slate-200">
+            64829 19482 04817 99283 18492 84018
+          </div>
+          <p className="text-[11px] text-slate-400">
+            To verify that encryption is end-to-end, compare this number with the one on your contact&apos;s device.
+          </p>
+          <div className="flex justify-end pt-2">
+            <Button variant="primary" size="sm" onClick={() => setShowEncryptionModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Media, Links and Docs Modal */}
+      <Modal
+        isOpen={showMediaModal}
+        onClose={() => setShowMediaModal(false)}
+        title="Media, links and docs"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          {(() => {
+            const clearedAt = conversation.clearedAt?.[currentUser.uid] || 0;
+            const mediaList = messages.filter((m) => {
+              if (clearedAt > 0 && m.createdAt <= clearedAt) return false;
+              if (m.deletedForUsers?.includes(currentUser.uid)) return false;
+              return m.type === "image" || Boolean(m.mediaUrl);
+            });
+            if (mediaList.length === 0) {
+              return (
+                <div className="py-12 text-center text-slate-400 text-xs">
+                  No media, links, or documents shared yet.
+                </div>
+              );
+            }
+            return (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[60vh] overflow-y-auto pr-1">
+                {mediaList.map((m) => (
+                  <div
+                    key={m.id}
+                    onClick={() => {
+                      setShowMediaModal(false);
+                      onOpenImageViewer?.(m);
+                    }}
+                    className="aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 cursor-pointer hover:opacity-90 relative group border border-slate-200/50 dark:border-slate-700/50"
+                  >
+                    <img
+                      src={m.mediaUrl}
+                      alt="shared media"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    />
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowMediaModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Starred Messages Modal */}
+      <Modal
+        isOpen={showStarredModal}
+        onClose={() => setShowStarredModal(false)}
+        title="Starred messages"
+        maxWidth="md"
+      >
+        <div className="space-y-3">
+          {(() => {
+            const clearedAt = conversation.clearedAt?.[currentUser.uid] || 0;
+            const starredList = messages.filter((m) => {
+              if (clearedAt > 0 && m.createdAt <= clearedAt) return false;
+              if (m.deletedForUsers?.includes(currentUser.uid)) return false;
+              return m.starredBy?.includes(currentUser.uid);
+            });
+
+            if (starredList.length === 0) {
+              return (
+                <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                  <Icon name="star_border" size="lg" className="text-slate-300 dark:text-slate-600" />
+                  <span>No starred messages in this chat yet.</span>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {starredList.map((m) => (
+                  <div
+                    key={m.id}
+                    className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        {m.senderName || (m.senderId === currentUser.uid ? "You" : name)}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Icon name="star" size="xs" className="text-amber-500 fill-amber-500" />
+                        <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </div>
+                    {m.text && (
+                      <p className="text-xs text-slate-800 dark:text-slate-100 whitespace-pre-wrap">
+                        {m.text}
+                      </p>
+                    )}
+                    {m.mediaUrl && (
+                      <div
+                        onClick={() => {
+                          setShowStarredModal(false);
+                          onOpenImageViewer?.(m);
+                        }}
+                        className="w-24 h-24 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-700 cursor-pointer"
+                      >
+                        <img src={m.mediaUrl} alt="starred media" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowStarredModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Change List Modal */}
+      <Modal
+        isOpen={showChangeListModal}
+        onClose={() => setShowChangeListModal(false)}
+        title="Add to list"
+        maxWidth="sm"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Select lists to categorize this conversation:
+          </p>
+          <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1">
+            {getEffectiveChatLists(currentUser)
+              .filter((l) => l.id !== "all" && l.id !== "unread" && l.id !== "groups")
+              .map((list) => {
+                const isMember =
+                  list.id === "favourites"
+                    ? isConversationFavourite(conversation.id, currentUser)
+                    : Boolean(currentUser.conversationListMemberships?.[conversation.id]?.includes(list.id));
+                return (
+                  <button
+                    key={list.id}
+                    type="button"
+                    onClick={async () => {
+                      await toggleConversationList(currentUser.uid, conversation.id, list.id, currentUser);
+                      if (list.id === "favourites") {
+                        setIsFavourite(!isMember);
+                      }
+                      showToast(`Updated "${list.label}"`);
+                    }}
+                    className="w-full py-2.5 px-3 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                        <Icon name={list.id === "favourites" ? "star" : "label"} size="xs" />
+                      </div>
+                      <span className="font-medium text-sm text-slate-800 dark:text-slate-100">
+                        {list.label}
+                      </span>
+                    </div>
+                    <div
+                      className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
+                        isMember
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "border-slate-300 dark:border-slate-600 bg-transparent"
+                      }`}
+                    >
+                      {isMember && <Icon name="check" size="xs" />}
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button variant="primary" size="sm" onClick={() => setShowChangeListModal(false)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Clear Chat Confirmation Modal with "Also delete starred messages" checkbox */}
+      <Modal
+        isOpen={showClearChatModal}
+        onClose={() => setShowClearChatModal(false)}
+        title="Clear this chat?"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            Messages will be permanently deleted from this conversation.
+          </p>
+
+          <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={alsoDeleteStarred}
+              onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+              className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-600"
+            />
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+              Also delete starred messages
+            </span>
+          </label>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowClearChatModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={async () => {
+                setShowClearChatModal(false);
+                try {
+                  await clearConversation(conversation.id, currentUser.uid, alsoDeleteStarred);
+                  showToast("Chat cleared successfully");
+                } catch (err: any) {
+                  showAlert(err.message || "Failed to clear chat", { type: "error" });
+                }
+              }}
+            >
+              Clear chat
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/90 text-white text-xs px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-md animate-in fade-in zoom-in-95">
+          {toastMessage}
+        </div>
+      )}
     </aside>
   );
 };

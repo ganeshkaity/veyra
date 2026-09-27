@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   writeBatch,
   query,
   where,
@@ -15,9 +16,11 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
+  collectionGroup,
 } from "firebase/firestore";
 import { db } from "../firebase/client";
 import { Conversation, ChatMessage, UserProfile, ConversationParticipant } from "@/types";
+import { getVeyraAiConversationId, VEYRA_AI_CONVERSATION_ID } from "../ai/aiService";
 
 export function subscribeToConversations(
   uid: string,
@@ -34,9 +37,26 @@ export function subscribeToConversations(
     q,
     (snapshot) => {
       const convos: Conversation[] = [];
+      const localDeleted = getLocalDeletedIds(uid);
+      const toRemoveFromLocal: string[] = [];
+
       snapshot.forEach((d) => {
-        convos.push({ id: d.id, ...d.data() } as Conversation);
+        const conv = { id: d.id, ...d.data() } as Conversation;
+        if (conv.deletedBy?.includes(uid)) {
+          return;
+        }
+        // If it exists in Firestore and is not deletedBy uid, it's an active or recreated chat
+        if (localDeleted.includes(conv.id)) {
+          toRemoveFromLocal.push(conv.id);
+        }
+        convos.push(conv);
       });
+
+      if (toRemoveFromLocal.length > 0) {
+        const updated = localDeleted.filter((id) => !toRemoveFromLocal.includes(id));
+        setLocalDeletedIds(uid, updated);
+      }
+
       // Order conversations by latest activity (lastMessage.timestamp or updatedAt desc)
       convos.sort((a, b) => {
         const timeA = a.lastMessage?.timestamp || a.updatedAt || a.createdAt || 0;
@@ -60,25 +80,31 @@ export async function createDirectConversation(
   const sortedIds = [currentUser.uid, targetUser.uid].sort();
   const convId = `dm_${sortedIds[0]}_${sortedIds[1]}`;
 
+  // Always remove from localDeleted for both users so the newly started chat is immediately visible
+  removeLocalDeletedId(currentUser.uid, convId);
+  removeLocalDeletedId(targetUser.uid, convId);
+
   const convRef = doc(db, "conversations", convId);
   const existing = await getDoc(convRef);
 
-  if (!existing.exists()) {
-    const participants: Record<string, ConversationParticipant> = {
-      [currentUser.uid]: {
-        uid: currentUser.uid,
-        displayName: currentUser.displayName,
-        username: currentUser.username,
-        avatarUrl: currentUser.avatarUrl,
-      },
-      [targetUser.uid]: {
-        uid: targetUser.uid,
-        displayName: targetUser.displayName,
-        username: targetUser.username,
-        avatarUrl: targetUser.avatarUrl,
-      },
-    };
+  const participants: Record<string, ConversationParticipant> = {
+    [currentUser.uid]: {
+      uid: currentUser.uid,
+      displayName: currentUser.displayName,
+      username: currentUser.username,
+      avatarUrl: currentUser.avatarUrl,
+    },
+    [targetUser.uid]: {
+      uid: targetUser.uid,
+      displayName: targetUser.displayName,
+      username: targetUser.username,
+      avatarUrl: targetUser.avatarUrl,
+    },
+  };
 
+  const now = Date.now();
+
+  if (!existing.exists()) {
     const newConv: Omit<Conversation, "id"> = {
       type: "direct",
       participantIds: [currentUser.uid, targetUser.uid],
@@ -87,11 +113,24 @@ export async function createDirectConversation(
         [currentUser.uid]: 0,
         [targetUser.uid]: 0,
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     await setDoc(convRef, cleanFirestoreData(newConv));
+  } else {
+    const existingData = existing.data() as Conversation;
+    const updates: Record<string, any> = {
+      updatedAt: now,
+      participants,
+      participantIds: [currentUser.uid, targetUser.uid],
+    };
+    if (existingData.deletedBy && existingData.deletedBy.length > 0) {
+      updates.deletedBy = existingData.deletedBy.filter(
+        (id) => id !== currentUser.uid && id !== targetUser.uid
+      );
+    }
+    await updateDoc(convRef, updates);
   }
 
   return convId;
@@ -217,16 +256,61 @@ export async function markConversationAsRead(
   conversationId: string,
   uid: string
 ): Promise<void> {
-  if (!conversationId || conversationId.startsWith("conv_veyra_ai") || conversationId.startsWith("ai_")) return;
+  if (!conversationId || !uid) return;
+  const resolvedConvId =
+    conversationId === VEYRA_AI_CONVERSATION_ID || conversationId.startsWith("conv_veyra_ai")
+      ? getVeyraAiConversationId(uid)
+      : conversationId;
   try {
-    const convRef = doc(db, "conversations", conversationId);
-    await updateDoc(convRef, {
+    const convRef = doc(db, "conversations", resolvedConvId);
+    let convData: Conversation | null = null;
+    try {
+      const snap = await getDoc(convRef);
+      if (snap.exists()) {
+        convData = snap.data() as Conversation;
+      }
+    } catch (_) {}
+
+    const updates: Record<string, any> = {
       [`unreadCount.${uid}`]: 0,
-    });
+      updatedAt: Date.now(),
+    };
+    if (convData?.lastMessage && convData.lastMessage.senderId !== uid && convData.lastMessage.status !== "read") {
+      updates["lastMessage.status"] = "read";
+    }
+
+    await setDoc(convRef, updates, { merge: true });
+
     // Mark recipient messages as read in the messages subcollection
-    await markMessagesAsRead(conversationId, uid);
+    if (!resolvedConvId.startsWith("ai_") && !resolvedConvId.startsWith("conv_veyra_ai")) {
+      await markMessagesAsRead(resolvedConvId, uid);
+    }
   } catch (err) {
     console.warn("Failed to mark conversation as read:", err);
+  }
+}
+
+export async function markConversationAsUnread(
+  conversationId: string,
+  uid: string
+): Promise<void> {
+  if (!conversationId || !uid) return;
+  const resolvedConvId =
+    conversationId === VEYRA_AI_CONVERSATION_ID || conversationId.startsWith("conv_veyra_ai")
+      ? getVeyraAiConversationId(uid)
+      : conversationId;
+  try {
+    const convRef = doc(db, "conversations", resolvedConvId);
+    await setDoc(
+      convRef,
+      {
+        [`unreadCount.${uid}`]: 1,
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("Failed to mark conversation as unread:", err);
   }
 }
 
@@ -307,6 +391,9 @@ export async function sendMessage(
 
   await setDoc(newMsgRef, fullMessage);
 
+  // Un-delete conversation locally for sender so it's guaranteed visible in chat list
+  removeLocalDeletedId(message.senderId, conversationId);
+
   // Update conversation last message snippet and recipient unreadCount
   const convRef = doc(db, "conversations", conversationId);
   try {
@@ -341,7 +428,34 @@ export async function sendMessage(
         }
       });
 
+      // If conversation was deleted by participants, restore it on new activity
+      if (convData.deletedBy && convData.deletedBy.length > 0) {
+        updates.deletedBy = [];
+      }
+
       await updateDoc(convRef, updates);
+    } else {
+      // If doc didn't exist yet (e.g. AI conversation), initialize it cleanly with lastMessage
+      await setDoc(
+        convRef,
+        {
+          id: conversationId,
+          participantIds: conversationId.startsWith("ai_")
+            ? [message.senderId, "veyra_ai"]
+            : [message.senderId],
+          type: conversationId.startsWith("ai_") ? "ai" : "direct",
+          lastMessage: {
+            text: lastSnippetText,
+            senderId: message.senderId,
+            timestamp: now,
+            type: message.type,
+            status: "sent",
+          },
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
     }
   } catch (err) {
     console.warn("Non-fatal: Failed to update conversation snippet:", err);
@@ -471,13 +585,159 @@ export async function deleteMessageForMe(
   if (snap.exists()) {
     const data = snap.data() as ChatMessage;
     const deletedFor = data.deletedForUsers || [];
+    const isUnreadFromOther = data.senderId !== uid && data.status !== "read";
     if (!deletedFor.includes(uid)) {
-      await updateDoc(msgRef, {
+      const msgUpdates: Record<string, any> = {
         deletedForUsers: [...deletedFor, uid],
         updatedAt: Date.now(),
-      });
+      };
+      if (isUnreadFromOther) {
+        msgUpdates.status = "read";
+      }
+      await updateDoc(msgRef, msgUpdates);
+
+      if (isUnreadFromOther) {
+        try {
+          const convRef = doc(db, "conversations", conversationId);
+          const convSnap = await getDoc(convRef);
+          if (convSnap.exists()) {
+            const convData = convSnap.data() as Conversation;
+            const currentUnread = convData.unreadCount?.[uid] || 0;
+            if (currentUnread > 0) {
+              await updateDoc(convRef, {
+                [`unreadCount.${uid}`]: Math.max(0, currentUnread - 1),
+                updatedAt: Date.now(),
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to update unreadCount on deleteMessageForMe:", e);
+        }
+      }
     }
   }
+}
+
+/**
+ * Toggle starred status of a message for a specific user
+ */
+export async function toggleStarMessage(
+  conversationId: string,
+  messageId: string,
+  uid: string
+): Promise<boolean> {
+  const msgRef = doc(db, "conversations", conversationId, "messages", messageId);
+  const snap = await getDoc(msgRef);
+  if (!snap.exists()) return false;
+  const data = snap.data() as ChatMessage;
+  const starredBy = data.starredBy || [];
+  const isStarred = starredBy.includes(uid);
+  if (isStarred) {
+    await updateDoc(msgRef, {
+      starredBy: arrayRemove(uid),
+      updatedAt: Date.now(),
+    });
+    return false;
+  } else {
+    await updateDoc(msgRef, {
+      starredBy: arrayUnion(uid),
+      updatedAt: Date.now(),
+    });
+    return true;
+  }
+}
+
+/**
+ * Star or unstar multiple messages at once
+ */
+export async function starMultipleMessages(
+  conversationId: string,
+  messageIds: string[],
+  uid: string,
+  star: boolean
+): Promise<void> {
+  if (!messageIds || messageIds.length === 0) return;
+  const batch = writeBatch(db);
+  for (const mId of messageIds) {
+    const msgRef = doc(db, "conversations", conversationId, "messages", mId);
+    batch.update(msgRef, {
+      starredBy: star ? arrayUnion(uid) : arrayRemove(uid),
+      updatedAt: Date.now(),
+    });
+  }
+  await batch.commit();
+}
+
+/**
+ * Permanently delete multiple messages from db (for conversation selection deletion)
+ */
+export async function deleteMultipleMessages(
+  conversationId: string,
+  messageIds: string[]
+): Promise<void> {
+  if (!messageIds || messageIds.length === 0) return;
+  const batch = writeBatch(db);
+  for (const mId of messageIds) {
+    const msgRef = doc(db, "conversations", conversationId, "messages", mId);
+    batch.delete(msgRef);
+  }
+  await batch.commit();
+}
+
+/**
+ * Retrieve all starred messages for a user across conversations
+ */
+export async function getAllUserStarredMessages(
+  uid: string,
+  conversationIds: string[]
+): Promise<ChatMessage[]> {
+  if (!uid) return [];
+  try {
+    // Try collectionGroup query first
+    const q = query(
+      collectionGroup(db, "messages"),
+      where("starredBy", "array-contains", uid)
+    );
+    const snap = await getDocs(q);
+    const msgs: ChatMessage[] = [];
+    snap.forEach((d) => {
+      const data = { id: d.id, ...d.data() } as ChatMessage;
+      if (!data.deletedForUsers?.includes(uid)) {
+        msgs.push(data);
+      }
+    });
+    if (msgs.length > 0) {
+      return msgs.sort((a, b) => b.createdAt - a.createdAt);
+    }
+  } catch (err) {
+    console.warn("collectionGroup query for starred messages failed, falling back to per-conversation lookup:", err);
+  }
+
+  // Fallback: Query messages subcollection of each conversation
+  const results: ChatMessage[] = [];
+  const targetIds = conversationIds && conversationIds.length > 0 ? conversationIds : [];
+
+  await Promise.all(
+    targetIds.map(async (cId) => {
+      try {
+        const q = query(
+          collection(db, "conversations", cId, "messages"),
+          where("starredBy", "array-contains", uid)
+        );
+        const snap = await getDocs(q);
+        snap.forEach((d) => {
+          const data = { id: d.id, ...d.data() } as ChatMessage;
+          if (!data.deletedForUsers?.includes(uid)) {
+            results.push(data);
+          }
+        });
+      } catch (e) {
+        // ignore per-conversation errors
+      }
+    })
+  );
+
+  return results.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 // LocalStorage fallback & cache for instant optimistic updates
@@ -680,4 +940,220 @@ export async function unpinConversation(
   } catch (err) {
     console.warn("Non-fatal: could not sync unpin to Firestore:", err);
   }
+}
+
+// ---------------- DELETED & CLEARED CHATS ----------------
+
+export function getLocalDeletedIds(uid: string): string[] {
+  if (typeof window === "undefined" || !uid) return [];
+  try {
+    const raw = localStorage.getItem(`veyra_deleted_${uid}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalDeletedIds(uid: string, ids: string[]): void {
+  if (typeof window === "undefined" || !uid) return;
+  try {
+    localStorage.setItem(`veyra_deleted_${uid}`, JSON.stringify(ids));
+  } catch {}
+}
+
+export function removeLocalDeletedId(uid: string, convId: string): void {
+  if (typeof window === "undefined" || !uid || !convId) return;
+  try {
+    const local = getLocalDeletedIds(uid);
+    if (local.includes(convId)) {
+      setLocalDeletedIds(
+        uid,
+        local.filter((id) => id !== convId)
+      );
+    }
+  } catch {}
+}
+
+export function isConversationDeleted(conv: Conversation, uid: string): boolean {
+  if (!uid || !conv) return false;
+  return Boolean(conv.deletedBy && conv.deletedBy.includes(uid));
+}
+
+async function clearConversationMessagesInBatch(
+  conversationId: string,
+  uid: string,
+  deleteStarred: boolean = false
+): Promise<void> {
+  try {
+    const messagesRef = collection(db, "conversations", conversationId, "messages");
+    while (true) {
+      const snap = await getDocs(query(messagesRef, limit(400)));
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      let deletedCount = 0;
+      snap.forEach((d) => {
+        const data = d.data() as ChatMessage;
+        const isStarred = data.starredBy?.includes(uid);
+        if (!deleteStarred && isStarred) {
+          return;
+        }
+        batch.delete(d.ref);
+        deletedCount++;
+      });
+      if (deletedCount > 0) {
+        await batch.commit();
+      }
+      if (deletedCount === 0 || snap.docs.length < 400) break;
+    }
+  } catch (err) {
+    console.warn("Non-fatal: could not batch clear messages:", err);
+  }
+}
+
+export async function deleteAllConversationMessagesFromDb(
+  conversationId: string
+): Promise<void> {
+  if (!conversationId) return;
+  try {
+    const messagesRef = collection(db, "conversations", conversationId, "messages");
+    while (true) {
+      const snap = await getDocs(query(messagesRef, limit(400)));
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      snap.forEach((d) => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+      if (snap.docs.length < 400) break;
+    }
+  } catch (err) {
+    console.warn("Could not completely delete messages for:", conversationId, err);
+  }
+}
+
+export async function deleteConversation(
+  conversationId: string,
+  uid: string
+): Promise<void> {
+  if (!conversationId) return;
+
+  const resolvedConvId =
+    conversationId === VEYRA_AI_CONVERSATION_ID || conversationId.startsWith("conv_veyra_ai")
+      ? (uid ? getVeyraAiConversationId(uid) : conversationId)
+      : conversationId;
+
+  // 1. Instant optimistic local cache update
+  if (uid) {
+    const current = getLocalDeletedIds(uid);
+    if (!current.includes(resolvedConvId)) {
+      setLocalDeletedIds(uid, [...current, resolvedConvId]);
+    }
+    if (!current.includes(conversationId)) {
+      setLocalDeletedIds(uid, [...current, conversationId]);
+    }
+    const pinned = getLocalPinnedIds(uid);
+    if (pinned.includes(resolvedConvId)) {
+      setLocalPinnedIds(uid, pinned.filter((id) => id !== resolvedConvId));
+    }
+    const archived = getLocalArchivedIds(uid);
+    if (archived.includes(resolvedConvId)) {
+      setLocalArchivedIds(uid, archived.filter((id) => id !== resolvedConvId));
+    }
+  }
+
+  // 2. Entirely delete all messages from subcollection in Firestore
+  await deleteAllConversationMessagesFromDb(resolvedConvId);
+  if (conversationId !== resolvedConvId) {
+    await deleteAllConversationMessagesFromDb(conversationId);
+  }
+
+  // 3. Entirely delete the conversation document from Firestore
+  try {
+    const convRef = doc(db, "conversations", resolvedConvId);
+    await deleteDoc(convRef);
+  } catch (err) {
+    console.warn("Non-fatal: could not delete conversation doc from Firestore:", err);
+  }
+
+  if (conversationId !== resolvedConvId) {
+    try {
+      const altRef = doc(db, "conversations", conversationId);
+      await deleteDoc(altRef);
+    } catch (_) {}
+  }
+
+  // 4. If this conversation was a group, delete the group doc and any invite code doc
+  try {
+    const groupRef = doc(db, "groups", resolvedConvId);
+    const groupSnap = await getDoc(groupRef);
+    if (groupSnap.exists()) {
+      const gData = groupSnap.data();
+      if (gData?.inviteCode) {
+        try {
+          await deleteDoc(doc(db, "groupInvites", gData.inviteCode));
+        } catch (_) {}
+      }
+      await deleteDoc(groupRef);
+    }
+  } catch (_) {}
+
+  // 5. Clean up user references in users/{uid} (locked chats, favourites)
+  if (uid) {
+    try {
+      const userRef = doc(db, "users", uid);
+      await updateDoc(userRef, {
+        lockedConversationIds: arrayRemove(resolvedConvId, conversationId),
+        favoriteConversationIds: arrayRemove(resolvedConvId, conversationId),
+      });
+    } catch (_) {}
+  }
+}
+
+export async function clearConversation(
+  conversationId: string,
+  uid: string,
+  deleteStarred: boolean = false
+): Promise<void> {
+  if (!conversationId || !uid) return;
+
+  const resolvedConvId =
+    conversationId === VEYRA_AI_CONVERSATION_ID || conversationId.startsWith("conv_veyra_ai")
+      ? getVeyraAiConversationId(uid)
+      : conversationId;
+
+  const now = Date.now();
+  // 1. Sync clearedAt timestamp to Firestore with setDoc merge
+  try {
+    const convRef = doc(db, "conversations", resolvedConvId);
+    await setDoc(
+      convRef,
+      {
+        [`clearedAt.${uid}`]: now,
+        [`unreadCount.${uid}`]: 0,
+        lastMessage: null,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("Non-fatal: could not update clearedAt in Firestore:", err);
+  }
+
+  // 2. Batch permanently delete messages from Firestore db
+  await clearConversationMessagesInBatch(resolvedConvId, uid, deleteStarred);
+}
+
+export async function deleteMultipleConversations(
+  conversationIds: string[],
+  uid: string
+): Promise<void> {
+  await Promise.allSettled(conversationIds.map((id) => deleteConversation(id, uid)));
+}
+
+export async function clearMultipleConversations(
+  conversationIds: string[],
+  uid: string,
+  deleteStarred = false
+): Promise<void> {
+  await Promise.allSettled(conversationIds.map((id) => clearConversation(id, uid, deleteStarred)));
 }

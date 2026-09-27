@@ -150,10 +150,10 @@ export const InstallAppModal: React.FC = () => {
                 </div>
                 <div>
                   <p className="font-semibold text-slate-800 dark:text-slate-200">
-                    Tap &quot;Install app&quot; or &quot;Add to Home screen&quot;
+                    Tap &quot;Install install and create shortcut&quot;
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Confirm the prompt. Veyra will install with a native app icon and launch in full-screen TWA standalone mode.
+                    Confirm the prompt. Veyra will install a native app shortly.
                   </p>
                 </div>
               </div>
@@ -196,13 +196,13 @@ export const InstallAppModal: React.FC = () => {
         {/* Benefits Badges */}
         <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 py-3 border-t border-slate-100 dark:border-slate-800 mt-3">
           <span className="flex items-center gap-1">
-            <Icon name="offline_pin" size="xs" className="text-emerald-500" /> Offline cache
+            <Icon name="offline_pin" size="xs" className="text-emerald-500" /> Offline Media
           </span>
           <span className="flex items-center gap-1">
-            <Icon name="bolt" size="xs" className="text-amber-500" /> Fast loading
+            <Icon name="bolt" size="xs" className="text-amber-500" /> Fast Loading
           </span>
           <span className="flex items-center gap-1">
-            <Icon name="fullscreen" size="xs" className="text-blue-500" /> Fullscreen TWA
+            <Icon name="fullscreen" size="xs" className="text-blue-500" /> Fullscreen
           </span>
         </div>
 

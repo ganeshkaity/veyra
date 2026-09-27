@@ -9,6 +9,12 @@ import {
   isConversationPinned,
   pinConversation,
   unpinConversation,
+  clearConversation,
+  clearMultipleConversations,
+  deleteConversation,
+  deleteMultipleConversations,
+  markConversationAsRead,
+  markConversationAsUnread,
 } from "@/lib/firestore/conversationService";
 import {
   isConversationLocked,
@@ -44,6 +50,7 @@ export const LockedChatsView: React.FC<LockedChatsViewProps> = ({
   const [showSelectionMoreMenu, setShowSelectionMoreMenu] = useState(false);
   const [showDeleteMultipleConfirm, setShowDeleteMultipleConfirm] = useState(false);
   const [showClearMultipleConfirm, setShowClearMultipleConfirm] = useState(false);
+  const [alsoDeleteStarred, setAlsoDeleteStarred] = useState(false);
   const [pinRefreshTick, setPinRefreshTick] = useState(0);
 
   // Immediate local state for unlocked items so they vanish immediately
@@ -244,6 +251,26 @@ export const LockedChatsView: React.FC<LockedChatsViewProps> = ({
     }
   };
 
+  const handleMarkReadSelected = async () => {
+    setShowSelectionMoreMenu(false);
+    const ids = Array.from(selectedChatIds);
+    handleClearSelection();
+    await Promise.allSettled(
+      ids.map((id) => markConversationAsRead(id, currentUser.uid))
+    );
+    showToast(`Marked ${ids.length} ${ids.length === 1 ? "chat" : "chats"} as read`);
+  };
+
+  const handleMarkUnreadSelected = async () => {
+    setShowSelectionMoreMenu(false);
+    const ids = Array.from(selectedChatIds);
+    handleClearSelection();
+    await Promise.allSettled(
+      ids.map((id) => markConversationAsUnread(id, currentUser.uid))
+    );
+    showToast(`Marked ${ids.length} ${ids.length === 1 ? "chat" : "chats"} as unread`);
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#0F172A] border-r border-slate-200/80 dark:border-slate-800">
       {/* Toast Notification */}
@@ -270,8 +297,18 @@ export const LockedChatsView: React.FC<LockedChatsViewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 relative">
             <button
+              type="button"
+              onClick={() => setShowDeleteMultipleConfirm(true)}
+              className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+              title="Delete chats"
+            >
+              <Icon name="delete" size="sm" />
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setShowSelectionMoreMenu(!showSelectionMoreMenu);
               }}
@@ -280,6 +317,53 @@ export const LockedChatsView: React.FC<LockedChatsViewProps> = ({
             >
               <Icon name="more_vert" size="sm" />
             </button>
+
+            {showSelectionMoreMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSelectionMoreMenu(false)}
+                />
+                <div className="absolute right-0 top-10 z-50 w-48 bg-[#1E293B] text-slate-100 rounded-2xl shadow-2xl border border-slate-700/80 py-1.5 text-xs animate-in fade-in zoom-in-95 select-none">
+                  <button
+                    type="button"
+                    onClick={handleMarkReadSelected}
+                    className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Mark as read
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMarkUnreadSelected}
+                    className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Mark as unread
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSelectionMoreMenu(false);
+                      const allIds = new Set(filteredConvs.map((c) => c.id));
+                      setSelectedChatIds(allIds);
+                    }}
+                    className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSelectionMoreMenu(false);
+                      setAlsoDeleteStarred(false);
+                      setShowClearMultipleConfirm(true);
+                    }}
+                    className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Clear chats
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -525,6 +609,234 @@ export const LockedChatsView: React.FC<LockedChatsViewProps> = ({
               >
                 <Icon name="check_circle" size="xs" className="text-slate-400" />
                 <span className="text-slate-700 dark:text-slate-300">Select chat</span>
+              </button>
+
+              {/* Mark as read / unread */}
+              {(() => {
+                const targetConv = contextMenu.conversation;
+                const isUnread = (targetConv.unreadCount?.[currentUser.uid] || 0) > 0;
+                return (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setContextMenu(null);
+                      if (isUnread) {
+                        await markConversationAsRead(targetConv.id, currentUser.uid);
+                        showToast("Marked as read");
+                      } else {
+                        await markConversationAsUnread(targetConv.id, currentUser.uid);
+                        showToast("Marked as unread");
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <Icon
+                      name={isUnread ? "mark_chat_read" : "mark_chat_unread"}
+                      size="xs"
+                      className="text-slate-400"
+                    />
+                    <span className="text-slate-700 dark:text-slate-300">
+                      {isUnread ? "Mark as read" : "Mark as unread"}
+                    </span>
+                  </button>
+                );
+              })()}
+
+              {/* Clear Chat */}
+              <button
+                type="button"
+                onClick={() => {
+                  const conv = contextMenu.conversation;
+                  setContextMenu(null);
+                  setAlsoDeleteStarred(false);
+                  setShowClearConfirm(conv);
+                }}
+                className="w-full px-3.5 py-2.5 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Icon name="remove_circle_outline" size="xs" className="text-slate-400" />
+                <span className="text-slate-700 dark:text-slate-300">Clear chat</span>
+              </button>
+
+              {/* Delete Chat */}
+              <button
+                type="button"
+                onClick={() => {
+                  const conv = contextMenu.conversation;
+                  setContextMenu(null);
+                  setShowDeleteConfirm(conv);
+                }}
+                className="w-full px-3.5 py-2.5 text-left flex items-center gap-3 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 transition-colors"
+              >
+                <Icon name="delete" size="xs" className="text-rose-500" />
+                <span className="font-semibold">Delete chat</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Clear Single Chat */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-5 animate-in zoom-in-95 duration-150">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Clear this chat?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+              Messages will be cleared from this device.
+            </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={alsoDeleteStarred}
+                onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => setShowClearConfirm(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const conv = showClearConfirm;
+                  setShowClearConfirm(null);
+                  await clearConversation(conv.id, currentUser.uid, alsoDeleteStarred);
+                  showToast("Chat messages cleared");
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Clear Multiple Chats */}
+      {showClearMultipleConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-5 animate-in zoom-in-95 duration-150">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Clear {selectedChatIds.size} {selectedChatIds.size === 1 ? "chat" : "chats"}?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+              Messages in the selected chats will be cleared from this device.
+            </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={alsoDeleteStarred}
+                onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => setShowClearMultipleConfirm(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const count = selectedChatIds.size;
+                  const ids = Array.from(selectedChatIds);
+                  setShowClearMultipleConfirm(false);
+                  handleClearSelection();
+                  await clearMultipleConversations(ids, currentUser.uid, alsoDeleteStarred);
+                  showToast(`Messages in ${count} ${count === 1 ? "chat" : "chats"} cleared`);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Delete Single Chat */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-5 animate-in zoom-in-95 duration-150">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Delete this chat?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+              Are you sure you want to delete this chat? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const conv = showDeleteConfirm;
+                  setShowDeleteConfirm(null);
+                  await deleteConversation(conv.id, currentUser.uid);
+                  if (selectedConversationId === conv.id) {
+                    onSelectConversation("");
+                  }
+                  showToast("Chat deleted");
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Delete Multiple Chats */}
+      {showDeleteMultipleConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-5 animate-in zoom-in-95 duration-150">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Delete {selectedChatIds.size} {selectedChatIds.size === 1 ? "chat" : "chats"}?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+              Are you sure you want to delete the selected chats? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => setShowDeleteMultipleConfirm(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const count = selectedChatIds.size;
+                  const ids = Array.from(selectedChatIds);
+                  setShowDeleteMultipleConfirm(false);
+                  handleClearSelection();
+                  await deleteMultipleConversations(ids, currentUser.uid);
+                  if (selectedConversationId && ids.includes(selectedConversationId)) {
+                    onSelectConversation("");
+                  }
+                  showToast(`${count} ${count === 1 ? "chat" : "chats"} deleted`);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm cursor-pointer"
+              >
+                Delete
               </button>
             </div>
           </div>

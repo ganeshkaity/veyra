@@ -21,6 +21,7 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { ArchivedChatsView } from "@/components/chat/ArchivedChatsView";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { usePwa } from "@/components/providers/PwaProvider";
 
 export interface ChatPageProps {
   initialArchive?: boolean;
@@ -37,6 +38,18 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
   const [isArchiveOpen, setIsArchiveOpen] = useState(initialArchive);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
+  const { triggerNativeInstallPrompt } = usePwa();
+  const [downloadToast, setDownloadToast] = useState<string | null>(null);
+
+  const handleDownloadApp = async () => {
+    const success = await triggerNativeInstallPrompt();
+    if (!success) {
+      setDownloadToast(
+        "To install, click the Install App icon in your browser address bar or menu."
+      );
+      setTimeout(() => setDownloadToast(null), 4500);
+    }
+  };
 
   // Strict route protection guard
   useEffect(() => {
@@ -98,13 +111,19 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
     if (typeof window !== "undefined") {
       const basePath = inArchive ? "/archive/chat" : "/chat";
       const url = `${basePath}?chat=${encodeURIComponent(id)}`;
+      const stateObj = {
+        ...(window.history.state || {}),
+        __NA: true,
+        chatId: id,
+        inArchive,
+      };
 
       // When opening a chat from the chat list, add a browser history entry so Back returns to chat/archive list.
       // If switching directly between open chats (e.g. desktop), replace state so Back still returns to list.
       if (!selectedConversationId) {
-        window.history.pushState({ chatId: id, inArchive }, "", url);
+        window.history.pushState(stateObj, "", url);
       } else {
-        window.history.replaceState({ chatId: id, inArchive }, "", url);
+        window.history.replaceState(stateObj, "", url);
       }
     }
   };
@@ -114,7 +133,11 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
     setSelectedConversationId(null);
     if (typeof window !== "undefined") {
       const resetPath = isArchiveOpen ? "/archive" : "/chat";
-      window.history.replaceState({ chatId: null, inArchive: isArchiveOpen }, "", resetPath);
+      window.history.replaceState(
+        { ...(window.history.state || {}), __NA: true, chatId: null, inArchive: isArchiveOpen },
+        "",
+        resetPath
+      );
     }
   };
 
@@ -134,7 +157,11 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
   const handleOpenArchive = () => {
     setIsArchiveOpen(true);
     if (typeof window !== "undefined") {
-      window.history.pushState({ inArchive: true }, "", "/archive");
+      window.history.pushState(
+        { ...(window.history.state || {}), __NA: true, inArchive: true },
+        "",
+        "/archive"
+      );
     }
   };
 
@@ -144,14 +171,19 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
     setSelectedConversationId(null);
     if (typeof window !== "undefined") {
       if (window.location.pathname.startsWith("/archive")) {
-        window.history.pushState({ inArchive: false }, "", "/chat");
+        window.history.pushState(
+          { ...(window.history.state || {}), __NA: true, inArchive: false },
+          "",
+          "/chat"
+        );
       }
     }
   };
 
   // Handle browser & Android Back / Forward navigation (popstate)
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.defaultPrevented) return;
       if (typeof window === "undefined") return;
       const pathname = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
@@ -194,17 +226,25 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
 
     if (initialChatId) {
       setSelectedConversationId(initialChatId);
-      window.history.replaceState({ chatId: null, inArchive }, "", basePath);
+      window.history.replaceState(
+        { ...(window.history.state || {}), __NA: true, chatId: null, inArchive },
+        "",
+        basePath
+      );
       window.history.pushState(
-        { chatId: initialChatId, inArchive },
+        { ...(window.history.state || {}), __NA: true, chatId: initialChatId, inArchive },
         "",
         `${chatPath}?chat=${encodeURIComponent(initialChatId)}`
       );
     } else if (isAi) {
       setSelectedConversationId(VEYRA_AI_CONVERSATION_ID);
-      window.history.replaceState({ chatId: null, inArchive }, "", basePath);
+      window.history.replaceState(
+        { ...(window.history.state || {}), __NA: true, chatId: null, inArchive },
+        "",
+        basePath
+      );
       window.history.pushState(
-        { chatId: VEYRA_AI_CONVERSATION_ID, inArchive },
+        { ...(window.history.state || {}), __NA: true, chatId: VEYRA_AI_CONVERSATION_ID, inArchive },
         "",
         `${chatPath}?chat=ai_veyra`
       );
@@ -407,7 +447,7 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
                     Select a conversation from the left to start messaging, or search for a username to start a new chat.
                   </p>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-3">
                     <Button
                       size="md"
                       onClick={() => setIsNewChatModalOpen(true)}
@@ -422,6 +462,15 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
                       leftIcon={<Icon name="groups" size="sm" />}
                     >
                       New Group
+                    </Button>
+                    <Button
+                      size="md"
+                      variant="outline"
+                      onClick={handleDownloadApp}
+                      leftIcon={<Icon name="download" size="sm" />}
+                      className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    >
+                      Download App
                     </Button>
                   </div>
 
@@ -499,6 +548,13 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
           handleSelectConversation(groupId);
         }}
       />
+      {/* Download Toast Notification */}
+      {downloadToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] bg-slate-900/95 dark:bg-slate-800/95 text-white text-xs px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 flex items-center gap-2 border border-slate-700">
+          <Icon name="info" size="xs" className="text-emerald-400" />
+          <span>{downloadToast}</span>
+        </div>
+      )}
     </div>
   );
 }

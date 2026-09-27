@@ -264,10 +264,6 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     >
       {step === 1 ? (
         <div className="space-y-3.5">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Select participants from your chats or search by username to add to your new group.
-          </p>
-
           {/* Selected members chips */}
           {selectedMembers.length > 0 && (
             <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/50 dark:border-slate-700/50 max-h-24 overflow-y-auto">

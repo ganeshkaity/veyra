@@ -9,7 +9,7 @@ const STATIC_ASSETS = [
   "/icons/icon-512x512.png",
   "/icons/maskable-icon-512x512.png"
 ];
-
+ 
 // Install: Cache critical static assets
 self.addEventListener("install", (event) => {
   event.waitUntil(

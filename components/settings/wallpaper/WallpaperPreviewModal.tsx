@@ -141,11 +141,11 @@ export const WallpaperPreviewModal: React.FC<WallpaperPreviewModalProps> = ({
               <div
                 className={`absolute inset-0 pointer-events-none transition-all duration-200 ${
                   previewTheme === "dark"
-                    ? "universal-chat-doodle-layer opacity-[0.085] [filter:invert(1)]"
+                    ? "universal-chat-doodle-layer opacity-[0.085]"
                     : "universal-chat-doodle-layer opacity-[0.35]"
                 }`}
                 style={{
-                  backgroundImage: "url('/assets/chatbg.png')",
+                  backgroundImage: "url('/assets/default_chat_bg.png')",
                   backgroundRepeat: "repeat",
                   backgroundSize: "360px",
                   backgroundPosition: "center top",
@@ -163,7 +163,7 @@ export const WallpaperPreviewModal: React.FC<WallpaperPreviewModalProps> = ({
             ) : (
               <div
                 className={`absolute inset-0 pointer-events-none transition-colors duration-200 ${
-                  previewTheme === "dark" ? "bg-black/15" : "bg-white/5"
+                  previewTheme === "dark" ? "bg-transparent" : "bg-white/5"
                 }`}
               />
             )}

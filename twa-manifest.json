@@ -20,6 +20,64 @@
   },
   "appVersionName": "1.5.9.0",
   "appVersionCode": 1590,
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile1.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Chats & Filter Lists"
+    },
+    {
+      "src": "/screenshots/mobile2.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Direct Conversation & Voice"
+    },
+    {
+      "src": "/screenshots/mobile3.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Status Updates & Stories"
+    },
+    {
+      "src": "/screenshots/mobile4.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Status Reactions & Replies"
+    },
+    {
+      "src": "/screenshots/mobile5.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Passkey Protected Lock Chats"
+    },
+    {
+      "src": "/screenshots/mobile6.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Manage Custom Chat Lists"
+    },
+    {
+      "src": "/screenshots/mobile7.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Settings & Account Privacy"
+    },
+    {
+      "src": "/screenshots/mobile8.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Appearance & Dynamic Themes"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Chats",

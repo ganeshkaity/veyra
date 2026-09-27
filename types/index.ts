@@ -71,6 +71,7 @@ export interface ChatMessage {
   isDeletedForEveryone?: boolean;
   deletedForEveryone?: boolean;
   deletedForUsers?: string[];
+  starredBy?: string[];
   forwarded?: boolean;
   createdAt: number;
   updatedAt?: number;
@@ -101,6 +102,8 @@ export interface Conversation {
   unreadCount?: Record<string, number>;
   archivedBy?: string[];
   pinnedBy?: string[];
+  deletedBy?: string[];
+  clearedAt?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }

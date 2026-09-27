@@ -39,6 +39,14 @@ const nextConfig: NextConfig = {
   },
   allowedDevOrigins: ["10.186.234.222"],
   devIndicators: false,
+  async rewrites() {
+    return [
+      {
+        source: "/chat/info",
+        destination: "/chat",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

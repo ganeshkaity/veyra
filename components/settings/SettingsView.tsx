@@ -176,7 +176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   Privacy
                 </h4>
                 <p className="text-[11px] text-slate-400">
-                  Read receipts, blocked contacts
+                  Lock Chat, Read receipts, blocked contacts
                 </p>
               </div>
             </div>
@@ -401,7 +401,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   About
                 </h4>
                 <p className="text-[11px] text-slate-400">
-                  Veyra v1.0.0, Har Baat, Apno Ke Saath.
+                  Veyra v1.5.9.1, Har Baat, Apno Ke Saath.
                 </p>
               </div>
             </div>
@@ -425,8 +425,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="w-full flex items-center justify-between p-3.5 px-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
           >
             <div className="flex items-center gap-3.5">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-                <Icon name={isInstalled ? "check_circle" : "get_app"} size="xs" />
+              <div className="w-8 h-8 rounded-xl text-white bg-green-500/20 dark:bg-green-500/20 flex items-center justify-center flex-shrink-0 shadow-xs">
+                <Icon name={isInstalled ? "check_circle" : "get_app"} size="sm" className="text-green-400"/>
               </div>
               <div>
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 group-hover:text-[#2563EB] dark:group-hover:text-[#14B8A6] transition-colors">
@@ -492,7 +492,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             "Har Baat, Apno Ke Saath."
           </p>
           <p className="text-[10px] text-slate-400">
-            Version 1.5.9.0
+            Version 1.5.9.1 (beta)
           </p>
         </div>
       </div>

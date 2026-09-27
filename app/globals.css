@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --font-jakarta: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --primary-blue: #2563eb;
     --primary-teal: #14b8a6;
     --deep-navy: #0f172a;
@@ -150,7 +151,7 @@ nextjs-portal {
 }
 
 .universal-chat-doodle-layer {
-  background-image: url('/assets/chatbg.png');
+  background-image: url('/assets/default_chat_bg.png');
   background-repeat: repeat;
   background-size: 360px;
   background-position: center top;
@@ -159,7 +160,8 @@ nextjs-portal {
 }
 
 .dark .universal-chat-doodle-layer {
-  filter: invert(1);
+  background-image: url('/assets/default_chat_bg.png');
+  filter: none;
   opacity: 0.085;
 }
 

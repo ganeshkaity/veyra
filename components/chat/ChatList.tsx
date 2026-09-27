@@ -2,26 +2,35 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { Conversation, UserProfile, StatusItem, UserStatusGroup } from "@/types";
+import { useRouter } from "next/navigation";
+import { Conversation, ChatMessage, UserProfile, StatusItem, UserStatusGroup } from "@/types";
 import { ChatListItem } from "./ChatListItem";
+import { MessageStatusTick } from "./MessageStatusTick";
 import { ChatListSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 import { searchUsersByUsername } from "@/lib/firestore/userService";
-import { createDirectConversation } from "@/lib/firestore/conversationService";
+import { createDirectConversation, isConversationDeleted } from "@/lib/firestore/conversationService";
 import { subscribeToUserPresence } from "@/lib/realtime/presenceService";
 import { subscribeToActiveStatuses } from "@/lib/firestore/statusService";
 import { StatusViewerModal } from "@/components/status/StatusViewerModal";
-import { VEYRA_AI_CONVERSATION_ID } from "@/lib/ai/aiService";
+import { VEYRA_AI_CONVERSATION_ID, getVeyraAiConversationId } from "@/lib/ai/aiService";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import {
   isConversationArchived,
   archiveConversation,
   isConversationPinned,
   pinConversation,
+  clearConversation,
+  deleteMultipleConversations,
+  clearMultipleConversations,
   unpinConversation,
+  deleteConversation,
   markConversationAsRead,
+  markConversationAsUnread,
+  subscribeToMessages,
 } from "@/lib/firestore/conversationService";
 import {
   getEffectiveChatLists,
@@ -34,6 +43,7 @@ import {
   saveChatLists,
 } from "@/lib/firestore/chatLockAndListService";
 import { LockedChatsView } from "./LockedChatsView";
+import { AllStarredMessagesModal } from "./AllStarredMessagesModal";
 
 interface ChatListProps {
   conversations: Conversation[];
@@ -199,6 +209,13 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const contextMenuOpenedAtRef = useRef<number>(0);
 
+  // Ensure Add to list desktop submenu is always closed when context menu closes
+  useEffect(() => {
+    if (!contextMenu) {
+      setShowDesktopListSubmenu(false);
+    }
+  }, [contextMenu]);
+
   // Veyra AI companion long-press touch refs
   const aiTouchStartXRef = useRef(0);
   const aiTouchStartYRef = useRef(0);
@@ -207,6 +224,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const aiLastLongPressTimeRef = useRef(0);
 
   const [showClearConfirm, setShowClearConfirm] = useState<Conversation | null>(null);
+  const [alsoDeleteStarred, setAlsoDeleteStarred] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<Conversation | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -217,13 +235,58 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [showClearMultipleConfirm, setShowClearMultipleConfirm] = useState(false);
   const [pinRefreshTick, setPinRefreshTick] = useState(0);
 
-  const isSelectionMode = selectedChatIds.size > 0;
+  const [isSelectionModeState, setIsSelectionModeState] = useState<boolean>(false);
+  const isSelectionMode = isSelectionModeState || selectedChatIds.size > 0;
 
   const { logout, refreshProfile } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const router = useRouter();
   const [showTopOptionsMenu, setShowTopOptionsMenu] = useState(false);
+  const [showAllStarredModal, setShowAllStarredModal] = useState(false);
   const [isAppLocked, setIsAppLocked] = useState(false);
   const [appLockPin, setAppLockPin] = useState("");
   const [appLockError, setAppLockError] = useState<string | null>(null);
+
+  // Veyra AI latest message live subscription
+  const [latestAiMessage, setLatestAiMessage] = useState<ChatMessage | null>(null);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const aiConvId = getVeyraAiConversationId(currentUser.uid);
+    const unsub = subscribeToMessages(aiConvId, 1, (msgs) => {
+      if (msgs && msgs.length > 0) {
+        setLatestAiMessage(msgs[msgs.length - 1]);
+      } else {
+        setLatestAiMessage(null);
+      }
+    });
+    return () => unsub();
+  }, [currentUser?.uid]);
+
+  const formatMessageTime = (ts?: number) => {
+    if (!ts) return "";
+    const date = new Date(ts);
+    const now = new Date();
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday =
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear();
+
+    if (isYesterday) return "Yesterday";
+
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -254,7 +317,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         );
         if (res.success) {
           await refreshProfile();
-          showToast("Chat locked with passkey 🔒");
+          showToast("Chat locked with passkey");
           setPasskeyModalState((prev) => ({
             ...prev,
             isOpen: false,
@@ -276,7 +339,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         );
         if (res.success) {
           await refreshProfile();
-          showToast("Chat unlocked 🔓");
+          showToast("Chat unlocked");
           setPasskeyModalState((prev) => ({
             ...prev,
             isOpen: false,
@@ -315,7 +378,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         setShowCreateListModal(false);
         setNewListNameInput("");
         setFilter(newId);
-        showToast(`Created "${trimmed}" list ✨`);
+        showToast(`Created "${trimmed}" list`);
       } else {
         showToast(res.error || "Failed to create list");
       }
@@ -330,17 +393,14 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const handleMarkAllAsRead = async () => {
     setShowTopOptionsMenu(false);
-    const unreadConvs = conversations.filter(
-      (c) => (c.unreadCount?.[currentUser.uid] ?? 0) > 0
-    );
-    if (unreadConvs.length === 0) {
-      showToast("All chats are already read");
+    if (!conversations || conversations.length === 0) {
+      showToast("No chats found");
       return;
     }
     await Promise.allSettled(
-      unreadConvs.map((c) => markConversationAsRead(c.id, currentUser.uid))
+      conversations.map((c) => markConversationAsRead(c.id, currentUser.uid))
     );
-    showToast("Marked all as read");
+    showToast("Marked all chats as read");
   };
 
   const getConvName = (conv: Conversation) => {
@@ -394,6 +454,7 @@ export const ChatList: React.FC<ChatListProps> = ({
 
     coords.left = Math.max(12, Math.min(windowWidth - menuWidth - 12, x));
 
+    setShowDesktopListSubmenu(false);
     setContextMenu({
       conversation: conv,
       coords,
@@ -529,6 +590,11 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   // Filter existing conversations
   const filteredConversations = conversations.filter((c) => {
+    // Hide deleted conversations
+    if (isConversationDeleted(c, currentUser.uid)) {
+      return false;
+    }
+
     // Hide locked conversations from regular chat list
     if (isConversationLocked(c.id, currentUser)) {
       return false;
@@ -610,57 +676,61 @@ export const ChatList: React.FC<ChatListProps> = ({
     }
   };
 
-  // Pop selection state from URL (triggering popstate)
-  const popSelectionUrl = () => {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("selection") === "true") {
-      window.history.back();
+  // Exit selection mode without page reload - cleanly restores URL to /chat or base path
+  const handleExitSelectionMode = () => {
+    setIsSelectionModeState(false);
+    setSelectedChatIds(new Set());
+    setShowSelectionMoreMenu(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("selection") === "true") {
+        url.searchParams.delete("selection");
+        const cleanUrl = url.pathname + (url.search ? url.search : "");
+        window.history.replaceState(null, "", cleanUrl);
+      }
     }
   };
 
-  // Listen to popstate (Android / browser Back button) to clear selection
+  // Listen to popstate (Android / browser Back button) to update selection mode
   useEffect(() => {
     const handlePop = () => {
       if (typeof window === "undefined") return;
       const params = new URLSearchParams(window.location.search);
       if (params.get("selection") !== "true") {
+        setIsSelectionModeState(false);
         setSelectedChatIds(new Set());
         setShowSelectionMoreMenu(false);
+      } else {
+        setIsSelectionModeState(true);
       }
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, []);
 
-  // Clean up any stale ?selection=true on mount if no chats are selected
+  // Respect ?selection=true on mount without auto-clearing or reload
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("selection") === "true" && selectedChatIds.size === 0) {
-      url.searchParams.delete("selection");
-      window.history.replaceState(window.history.state, "", url.toString());
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("selection") === "true") {
+      setIsSelectionModeState(true);
     }
   }, []);
 
   const handleCancelSelection = () => {
-    setSelectedChatIds(new Set());
-    setShowSelectionMoreMenu(false);
-    popSelectionUrl();
+    handleExitSelectionMode();
   };
 
   const handleToggleSelectChat = (convId: string) => {
+    if (!isSelectionMode) {
+      setIsSelectionModeState(true);
+      pushSelectionUrl();
+    }
     setSelectedChatIds((prev) => {
       const next = new Set(prev);
       if (next.has(convId)) {
         next.delete(convId);
-        if (next.size === 0) {
-          popSelectionUrl();
-        }
       } else {
-        if (next.size === 0) {
-          pushSelectionUrl();
-        }
         next.add(convId);
       }
       return next;
@@ -679,10 +749,9 @@ export const ChatList: React.FC<ChatListProps> = ({
       for (const conv of selectedConvs) {
         await unpinConversation(conv.id, currentUser.uid, false);
       }
-      showToast("Chats unpinned 📌");
+      showToast("Chats unpinned");
       setPinRefreshTick((t) => t + 1);
-      setSelectedChatIds(new Set());
-      popSelectionUrl();
+      handleExitSelectionMode();
     } else {
       const unpinnedSelected = selectedConvs.filter(
         (c) => !isConversationPinned(c, currentUser.uid, false)
@@ -703,16 +772,14 @@ export const ChatList: React.FC<ChatListProps> = ({
       }
       showToast("Chats pinned to top 📌");
       setPinRefreshTick((t) => t + 1);
-      setSelectedChatIds(new Set());
-      popSelectionUrl();
+      handleExitSelectionMode();
     }
   };
 
   // Archive Selected Chats
   const handleArchiveSelected = async () => {
     const ids = Array.from(selectedChatIds);
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    handleExitSelectionMode();
     for (const id of ids) {
       await archiveConversation(id, currentUser.uid);
     }
@@ -726,17 +793,33 @@ export const ChatList: React.FC<ChatListProps> = ({
   };
 
   // 3-Dot Menu Actions
-  const handleMarkUnreadSelected = () => {
+  const handleMarkReadSelected = async () => {
     setShowSelectionMoreMenu(false);
-    showToast(
-      `Marked ${selectedChatIds.size} ${selectedChatIds.size === 1 ? "chat" : "chats"} as unread ✉️`
+    const ids = Array.from(selectedChatIds);
+    handleExitSelectionMode();
+    await Promise.allSettled(
+      ids.map((id) => markConversationAsRead(id, currentUser.uid))
     );
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    showToast(
+      `Marked ${ids.length} ${ids.length === 1 ? "chat" : "chats"} as read`
+    );
+  };
+
+  const handleMarkUnreadSelected = async () => {
+    setShowSelectionMoreMenu(false);
+    const ids = Array.from(selectedChatIds);
+    handleExitSelectionMode();
+    await Promise.allSettled(
+      ids.map((id) => markConversationAsUnread(id, currentUser.uid))
+    );
+    showToast(
+      `Marked ${ids.length} ${ids.length === 1 ? "chat" : "chats"} as unread`
+    );
   };
 
   const handleSelectAll = () => {
     setShowSelectionMoreMenu(false);
+    setIsSelectionModeState(true);
     pushSelectionUrl();
     const allIds = new Set(sortedConversations.map((c) => c.id));
     setSelectedChatIds(allIds);
@@ -744,23 +827,20 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const handleLockSelected = () => {
     setShowSelectionMoreMenu(false);
-    showToast("Selected chats locked with passkey 🔒");
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    showToast("Selected chats locked with passkey");
+    handleExitSelectionMode();
   };
 
   const handleFavouriteSelected = () => {
     setShowSelectionMoreMenu(false);
-    showToast("Added to favourites ❤️");
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    showToast("Added to favourites");
+    handleExitSelectionMode();
   };
 
   const handleAddToListSelected = () => {
     setShowSelectionMoreMenu(false);
     showToast("Added to list");
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    handleExitSelectionMode();
   };
 
   const handleClearSelected = () => {
@@ -789,17 +869,17 @@ export const ChatList: React.FC<ChatListProps> = ({
     <div className="flex flex-col h-full bg-white dark:bg-[#0F172A] border-r border-slate-200 dark:border-slate-800">
       {/* Top Header / Selection Action Bar */}
       {isSelectionMode ? (
-        <div className="flex items-center justify-between px-4 py-3.5 bg-[#0C1322] text-white shadow-md z-30 transition-all select-none border-b border-slate-700/60">
+        <div className="flex items-center justify-between px-4 py-3.5 bg-white dark:bg-[#0C1322] text-black shadow-sm z-30 transition-all select-none border-b border-slate-700/10">
           <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={handleCancelSelection}
-              className="p-1 -ml-1 rounded-full text-slate-200 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+              className="p-1 -ml-1 rounded-full text-black dark:text-white hover:text-white hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
               aria-label="Cancel selection"
             >
               <Icon name="arrow_back" size="md" />
             </button>
-            <span className="text-xl font-bold tracking-tight text-white leading-none">
+            <span className="text-xl font-bold tracking-tight text-black dark:text-white leading-none">
               {selectedChatIds.size}
             </span>
           </div>
@@ -809,7 +889,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             <button
               type="button"
               onClick={handlePinSelected}
-              className="p-2 rounded-full text-slate-200 hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
+              className="p-2 rounded-full text-black dark:text-white hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
               title={allSelectedArePinned ? "Unpin chats" : "Pin chats"}
               aria-label={allSelectedArePinned ? "Unpin chats" : "Pin chats"}
             >
@@ -824,7 +904,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             <button
               type="button"
               onClick={handleDeleteSelected}
-              className="p-2 rounded-full text-slate-200 hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
+              className="p-2 rounded-full text-black dark:text-white hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
               title="Delete chats"
               aria-label="Delete chats"
             >
@@ -835,7 +915,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             <button
               type="button"
               onClick={handleArchiveSelected}
-              className="p-2 rounded-full text-slate-200 hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
+              className="p-2 rounded-full text-black dark:text-white hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
               title="Archive chats"
               aria-label="Archive chats"
             >
@@ -847,7 +927,7 @@ export const ChatList: React.FC<ChatListProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSelectionMoreMenu(!showSelectionMoreMenu)}
-                className="p-2 rounded-full text-slate-200 hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
+                className="p-2 rounded-full text-black dark:text-white hover:text-white hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer"
                 title="More options"
                 aria-label="More options"
               >
@@ -860,46 +940,53 @@ export const ChatList: React.FC<ChatListProps> = ({
                     className="fixed inset-0 z-40"
                     onClick={() => setShowSelectionMoreMenu(false)}
                   />
-                  <div className="absolute right-0 top-11 z-50 w-52 bg-[#1E293B] text-slate-100 rounded-2xl shadow-2xl border border-slate-700/80 py-1.5 text-xs animate-in fade-in zoom-in-95 select-none">
+                  <div className="absolute right-0 top-11 z-50 w-52 bg-white dark:bg-[#1E293B] text-slate-100 rounded-2xl shadow-2xl border border-slate-700/10 py-1.5 text-xs animate-in fade-in zoom-in-95 select-none">
+                    <button
+                      type="button"
+                      onClick={handleMarkReadSelected}
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-black dark:text-slate-200 transition-colors cursor-pointer"
+                    >
+                      Mark as read
+                    </button>
                     <button
                       type="button"
                       onClick={handleMarkUnreadSelected}
-                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-black dark:text-slate-200 transition-colors cursor-pointer"
                     >
                       Mark as unread
                     </button>
                     <button
                       type="button"
                       onClick={handleSelectAll}
-                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-black dark:text-slate-200 transition-colors cursor-pointer"
                     >
                       Select all
                     </button>
                     <button
                       type="button"
                       onClick={handleLockSelected}
-                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-black dark:text-slate-200 transition-colors cursor-pointer"
                     >
                       Lock chats
                     </button>
                     <button
                       type="button"
                       onClick={handleFavouriteSelected}
-                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-black dark:text-slate-200 transition-colors cursor-pointer"
                     >
                       Add to Favourites
                     </button>
                     <button
                       type="button"
                       onClick={handleAddToListSelected}
-                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-black dark:text-slate-200 transition-colors cursor-pointer"
                     >
                       Add to list
                     </button>
                     <button
                       type="button"
                       onClick={handleClearSelected}
-                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer border-t border-slate-700/60"
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/10 dark:hover:bg-slate-700/60 font-medium text-[13px] text-red-500  dark:text-rose-500 hover:text-rose-600 transition-colors cursor-pointer border-t border-slate-700/10"
                     >
                       Clear chats
                     </button>
@@ -941,6 +1028,23 @@ export const ChatList: React.FC<ChatListProps> = ({
                     onClick={() => setShowTopOptionsMenu(false)}
                   />
                   <div className="absolute right-0 top-11 z-50 w-56 bg-white dark:bg-[#18222d] rounded-2xl shadow-2xl border border-slate-200/90 dark:border-slate-700/80 py-2 text-sm animate-in fade-in zoom-in-95 text-slate-800 dark:text-slate-100 select-none">
+                    {/* 3. Select chats */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTopOptionsMenu(false);
+                        setIsSelectionModeState(true);
+                        pushSelectionUrl();
+                        if (sortedConversations.length > 0) {
+                          setSelectedChatIds(new Set([sortedConversations[0].id]));
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
+                    >
+                      <Icon name="check_box" size="sm" className="text-slate-500 dark:text-slate-300" />
+                      <span className="font-medium text-[13.5px]">Select chats</span>
+                    </button>
+
                     {/* 1. New group */}
                     <button
                       type="button"
@@ -959,31 +1063,12 @@ export const ChatList: React.FC<ChatListProps> = ({
                       type="button"
                       onClick={() => {
                         setShowTopOptionsMenu(false);
-                        setFilter("favourites");
-                        showToast("Showing starred & favourite chats");
+                        setShowAllStarredModal(true);
                       }}
                       className="w-full px-4 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
                     >
                       <Icon name="star_outline" size="sm" className="text-slate-500 dark:text-slate-300" />
                       <span className="font-medium text-[13.5px]">Starred messages</span>
-                    </button>
-
-                    {/* 3. Select chats */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowTopOptionsMenu(false);
-                        if (sortedConversations.length > 0) {
-                          setSelectedChatIds(new Set([sortedConversations[0].id]));
-                          pushSelectionUrl();
-                        } else {
-                          showToast("No chats to select");
-                        }
-                      }}
-                      className="w-full px-4 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
-                    >
-                      <Icon name="check_box" size="sm" className="text-slate-500 dark:text-slate-300" />
-                      <span className="font-medium text-[13.5px]">Select chats</span>
                     </button>
 
                     {/* 4. Mark all as read */}
@@ -994,6 +1079,31 @@ export const ChatList: React.FC<ChatListProps> = ({
                     >
                       <Icon name="mark_chat_read" size="sm" className="text-slate-500 dark:text-slate-300" />
                       <span className="font-medium text-[13.5px]">Mark all as read</span>
+                    </button>
+
+                    {/* Theme Toggle: Dark / Light */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTopOptionsMenu(false);
+                        toggleTheme();
+                        showToast(theme === "dark" ? "Switched to Light theme" : "Switched to Dark theme");
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <Icon
+                          name={theme === "dark" ? "light_mode" : "dark_mode"}
+                          size="sm"
+                          className="text-slate-500 dark:text-slate-300"
+                        />
+                        <span className="font-medium text-[13.5px]">
+                          {theme === "dark" ? "Light theme" : "Dark theme"}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-400 capitalize">
+                        {theme}
+                      </span>
                     </button>
 
                     {/* Divider */}
@@ -1264,8 +1374,9 @@ export const ChatList: React.FC<ChatListProps> = ({
           <div>
             {/* Pinned Veyra AI Companion Entry (Hidden during Selection Mode) */}
             {filter === "all" && !isSelectionMode && (() => {
+              const aiConvId = getVeyraAiConversationId(currentUser.uid);
               const veyraAiConv: Conversation = {
-                id: VEYRA_AI_CONVERSATION_ID,
+                id: aiConvId,
                 type: "ai",
                 participantIds: [currentUser.uid, "veyra_ai"],
                 participants: {
@@ -1280,8 +1391,19 @@ export const ChatList: React.FC<ChatListProps> = ({
                   },
                 },
                 createdAt: 0,
-                updatedAt: Date.now(),
+                updatedAt: latestAiMessage?.createdAt || Date.now(),
               } as Conversation;
+
+              const isAiSelected =
+                selectedConversationId === VEYRA_AI_CONVERSATION_ID ||
+                selectedConversationId === aiConvId;
+
+              let aiSnippetText = latestAiMessage?.text || "";
+              if (latestAiMessage) {
+                if (latestAiMessage.type === "image") aiSnippetText = "📷 Photo";
+                else if (latestAiMessage.type === "gif") aiSnippetText = "👾 GIF";
+                else if (latestAiMessage.type === "sticker") aiSnippetText = `${latestAiMessage.text} Sticker`;
+              }
 
               return (
                 <div
@@ -1294,7 +1416,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                       aiIsLongPressRef.current = false;
                       return;
                     }
-                    onSelectConversation(VEYRA_AI_CONVERSATION_ID);
+                    onSelectConversation(aiConvId);
                   }}
                   onTouchStart={(e) => {
                     aiTouchStartXRef.current = e.touches[0].clientX;
@@ -1333,7 +1455,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                     handleOpenContextMenu(e.clientX, e.clientY, veyraAiConv);
                   }}
                   className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-all border-b border-teal-100/60 dark:border-teal-950/40 select-none group relative cursor-pointer ${
-                    selectedConversationId === VEYRA_AI_CONVERSATION_ID
+                    isAiSelected
                       ? "bg-teal-50/80 dark:bg-teal-950/30 border-l-4 border-l-teal-500"
                       : "hover:bg-teal-50/40 dark:hover:bg-teal-950/20"
                   }`}
@@ -1365,18 +1487,42 @@ export const ChatList: React.FC<ChatListProps> = ({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 truncate">
                         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                           Veyra
                         </h4>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 flex-shrink-0">
                           AI Buddy
                         </span>
                       </div>
+                      {latestAiMessage && (
+                        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">
+                          {formatMessageTime(latestAiMessage.createdAt)}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      Har Baat, Apno Ke Saath • Always here to assist you
-                    </p>
+                    <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 truncate">
+                      {latestAiMessage ? (
+                        <>
+                          {latestAiMessage.senderId === currentUser.uid && (
+                            <MessageStatusTick
+                              status={
+                                latestAiMessage.status === "read"
+                                  ? "read"
+                                  : latestAiMessage.status === "delivered"
+                                  ? "delivered"
+                                  : "sent"
+                              }
+                              size={14}
+                              className="flex-shrink-0 mr-0.5"
+                            />
+                          )}
+                          <span className="truncate">{aiSnippetText}</span>
+                        </>
+                      ) : (
+                        <span className="truncate">Always here to assist</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -1496,28 +1642,21 @@ export const ChatList: React.FC<ChatListProps> = ({
                 {/* Options for human / group conversations only */}
                 {!isAiChat && (
                   <>
-                    {/* 0. Select chat */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
-                        const targetConv = contextMenu.conversation;
-                        setContextMenu(null);
-                        pushSelectionUrl();
-                        setSelectedChatIds(new Set([targetConv.id]));
-                      }}
-                      className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
-                    >
-                      <Icon
-                        name="check_circle"
-                        size="sm"
-                        className="text-slate-400 dark:text-slate-400 group-hover:text-[#00A884] dark:group-hover:text-[#00A884] transition-colors"
-                      />
-                      <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">
-                        Select chat
-                      </span>
-                    </button>
-
+                  {/* Select chat */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetConv = contextMenu.conversation;
+                    setContextMenu(null);
+                    setIsSelectionModeState(true);
+                    pushSelectionUrl();
+                    setSelectedChatIds(new Set([targetConv.id]));
+                  }}
+                  className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
+                >
+                  <Icon name="check_box" size="sm" className="text-slate-400 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors" />
+                  <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">Select chat</span>
+                </button>
                     {/* 1. Archive chat */}
                     <button
                       type="button"
@@ -1526,7 +1665,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                         const targetConv = contextMenu.conversation;
                         setContextMenu(null);
                         await archiveConversation(targetConv.id, currentUser.uid);
-                        showToast("Chat archived 📁");
+                        showToast("Chat archived");
                         onArchiveToggle?.();
                       }}
                       className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
@@ -1544,7 +1683,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                         setContextMenu(null);
                         setShowDesktopListSubmenu(false);
                         if (!currentUser.lockedChatEnabled || !currentUser.lockedChatPasskey) {
-                          showToast("Please turn on Lock Chat in Settings > Privacy first 🔒");
+                          router.push("/setting/privacy/lock-chats");
                           return;
                         }
                         setPasskeyModalState({
@@ -1579,12 +1718,12 @@ export const ChatList: React.FC<ChatListProps> = ({
                             setContextMenu(null);
                             if (isPinned) {
                               await unpinConversation(targetConv.id, currentUser.uid, false);
-                              showToast("Chat unpinned 📌");
+                              showToast("Chat unpinned");
                               setPinRefreshTick((t) => t + 1);
                             } else {
                               const res = await pinConversation(targetConv.id, currentUser.uid, false);
                               if (res.success) {
-                                showToast("Chat pinned to top 📌");
+                                showToast("Chat pinned to top");
                                 setPinRefreshTick((t) => t + 1);
                               } else {
                                 showToast(res.message || "You can only pin up to 4 chats");
@@ -1610,18 +1749,36 @@ export const ChatList: React.FC<ChatListProps> = ({
                 )}
 
                 {/* Mark as unread (Available for all chats including Veyra AI) */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
-                    setContextMenu(null);
-                    showToast("Marked as unread ✉️");
-                  }}
-                  className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
-                >
-                  <Icon name="mark_chat_unread" size="sm" className="text-slate-400 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors" />
-                  <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">Mark as unread</span>
-                </button>
+                {(() => {
+                  const targetConv = contextMenu.conversation;
+                  const isUnread = (targetConv.unreadCount?.[currentUser.uid] || 0) > 0;
+                  return (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
+                        setContextMenu(null);
+                        if (isUnread) {
+                          await markConversationAsRead(targetConv.id, currentUser.uid);
+                          showToast("Marked as read");
+                        } else {
+                          await markConversationAsUnread(targetConv.id, currentUser.uid);
+                          showToast("Marked as unread");
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
+                    >
+                      <Icon
+                        name={isUnread ? "mark_chat_read" : "mark_chat_unread"}
+                        size="sm"
+                        className="text-slate-400 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors"
+                      />
+                      <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">
+                        {isUnread ? "Mark as read" : "Mark as unread"}
+                      </span>
+                    </button>
+                  );
+                })()}
 
                 {!isAiChat && (
                   <>
@@ -1643,7 +1800,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                             );
                             await refreshProfile();
                             if (res.isFavourite) {
-                              showToast("Added to favourites ❤️");
+                              showToast("Added to favourites");
                             } else {
                               showToast("Removed from favourites");
                             }
@@ -1670,18 +1827,12 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
                         if (typeof window !== "undefined" && window.innerWidth < 768) {
                           setMobileAddToListConv(contextMenu.conversation);
                           setContextMenu(null);
                           setShowDesktopListSubmenu(false);
                         } else {
                           setShowDesktopListSubmenu((p) => !p);
-                        }
-                      }}
-                      onMouseEnter={() => {
-                        if (typeof window !== "undefined" && window.innerWidth >= 768) {
-                          setShowDesktopListSubmenu(true);
                         }
                       }}
                       className="w-full px-3.5 py-2.5 text-left flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
@@ -1698,11 +1849,11 @@ export const ChatList: React.FC<ChatListProps> = ({
 
               {/* Bottom Options Group */}
               <div className="py-0.5">
+
                 {/* Clear chat (Available for all chats including Veyra AI) */}
                 <button
                   type="button"
                   onClick={() => {
-                    if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
                     const targetConv = contextMenu.conversation;
                     setContextMenu(null);
                     setShowClearConfirm(targetConv);
@@ -1718,7 +1869,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
                       const targetConv = contextMenu.conversation;
                       setContextMenu(null);
                       setShowDeleteConfirm(targetConv);
@@ -1823,9 +1973,22 @@ export const ChatList: React.FC<ChatListProps> = ({
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
               Clear this chat?
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
               Messages in this chat will be cleared from this device.
             </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={alsoDeleteStarred}
+                onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
             <div className="flex justify-end gap-2.5">
               <button
                 onClick={() => setShowClearConfirm(null)}
@@ -1834,11 +1997,14 @@ export const ChatList: React.FC<ChatListProps> = ({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  const target = showClearConfirm;
+                  if (!target) return;
                   setShowClearConfirm(null);
+                  await clearConversation(target.id, currentUser.uid, alsoDeleteStarred);
                   showToast("Chat messages cleared");
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm cursor-pointer"
               >
                 Clear chat
               </button>
@@ -1865,11 +2031,17 @@ export const ChatList: React.FC<ChatListProps> = ({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  const target = showDeleteConfirm;
+                  if (!target) return;
                   setShowDeleteConfirm(null);
+                  await deleteConversation(target.id, currentUser.uid);
+                  if (selectedConversationId === target.id) {
+                    onSelectConversation("");
+                  }
                   showToast("Chat deleted");
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm cursor-pointer"
               >
                 Delete chat
               </button>
@@ -1896,14 +2068,20 @@ export const ChatList: React.FC<ChatListProps> = ({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const count = selectedChatIds.size;
+                  const ids = Array.from(selectedChatIds);
                   setShowDeleteMultipleConfirm(false);
-                  setSelectedChatIds(new Set());
-                  popSelectionUrl();
-                  showToast(`${count} ${count === 1 ? "chat" : "chats"} deleted`);
+                  handleExitSelectionMode();
+                  if (ids.length > 0) {
+                    await deleteMultipleConversations(ids, currentUser.uid);
+                    if (selectedConversationId && ids.includes(selectedConversationId)) {
+                      onSelectConversation("");
+                    }
+                    showToast(`${count} ${count === 1 ? "chat" : "chats"} deleted`);
+                  }
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm cursor-pointer"
               >
                 Delete
               </button>
@@ -1919,9 +2097,22 @@ export const ChatList: React.FC<ChatListProps> = ({
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
               Clear {selectedChatIds.size} {selectedChatIds.size === 1 ? "chat" : "chats"}?
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
               Messages in the selected chats will be cleared from this device.
             </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={alsoDeleteStarred}
+                onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
             <div className="flex justify-end gap-2.5">
               <button
                 onClick={() => setShowClearMultipleConfirm(false)}
@@ -1930,14 +2121,17 @@ export const ChatList: React.FC<ChatListProps> = ({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const count = selectedChatIds.size;
+                  const ids = Array.from(selectedChatIds);
                   setShowClearMultipleConfirm(false);
-                  setSelectedChatIds(new Set());
-                  popSelectionUrl();
-                  showToast(`Messages in ${count} ${count === 1 ? "chat" : "chats"} cleared`);
+                  handleExitSelectionMode();
+                  if (ids.length > 0) {
+                    await clearMultipleConversations(ids, currentUser.uid, alsoDeleteStarred);
+                    showToast(`Messages in ${count} ${count === 1 ? "chat" : "chats"} cleared`);
+                  }
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm cursor-pointer"
               >
                 Clear
               </button>
@@ -2034,7 +2228,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                 Veyra is Locked
               </h2>
               <p className="text-xs text-slate-400">
-                Enter your 4-digit PIN to access your conversations
+                Enter PIN to access your Locked conversations
               </p>
             </div>
 
@@ -2393,6 +2587,15 @@ export const ChatList: React.FC<ChatListProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal: All Starred Messages */}
+      <AllStarredMessagesModal
+        isOpen={showAllStarredModal}
+        onClose={() => setShowAllStarredModal(false)}
+        currentUser={currentUser}
+        conversations={conversations}
+        onSelectConversation={onSelectConversation}
+      />
     </div>
   );
 };

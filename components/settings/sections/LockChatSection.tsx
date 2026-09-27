@@ -21,7 +21,8 @@ export const LockChatSection: React.FC<LockChatSectionProps> = ({
 }) => {
   const { refreshProfile } = useAuth();
 
-  const isEnabled = Boolean(currentUser.lockedChatEnabled && currentUser.lockedChatPasskey);
+  const hasPasskey = Boolean(currentUser.lockedChatPasskey && currentUser.lockedChatPasskey.trim().length > 0);
+  const isEnabled = Boolean(currentUser.lockedChatEnabled && hasPasskey);
 
   // Setup / Change Passkey form state
   const [isSettingUp, setIsSettingUp] = useState(!isEnabled);
@@ -203,54 +204,56 @@ export const LockChatSection: React.FC<LockChatSectionProps> = ({
           </div>
         </div>
 
-        {/* Feature Toggle Card */}
-        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Lock Chat Feature
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {isEnabled
-                  ? "Chat Lock is active and protecting your hidden chats."
-                  : "Turn on to set a passkey and start locking chats."}
-              </p>
-            </div>
+        {/* Feature Toggle Card - only shown when a passkey is saved */}
+        {hasPasskey && (
+          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-4 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Lock Chat Feature
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {isEnabled
+                    ? "Chat Lock is active and protecting your hidden chats."
+                    : "Turn on to set a passkey and start locking chats."}
+                </p>
+              </div>
 
-            {/* Toggle Switch */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isEnabled}
-              onClick={handleToggleEnable}
-              className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isEnabled
-                  ? "bg-[#00A884] dark:bg-[#14B8A6]"
-                  : "bg-slate-200 dark:bg-slate-700"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  isEnabled ? "translate-x-5" : "translate-x-0"
+              {/* Toggle Switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isEnabled}
+                onClick={handleToggleEnable}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isEnabled
+                    ? "bg-[#00A884] dark:bg-[#14B8A6]"
+                    : "bg-slate-200 dark:bg-slate-700"
                 }`}
-              />
-            </button>
-          </div>
-
-          {isEnabled && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-              <span className="text-slate-500 dark:text-slate-400">
-                Locked chats:{" "}
-                <strong className="text-slate-800 dark:text-slate-200">
-                  {currentUser.lockedConversationIds?.length || 0}
-                </strong>
-              </span>
-              <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
-                <Icon name="check" size="xs" /> Active
-              </span>
+              >
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    isEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
             </div>
-          )}
-        </div>
+
+            {isEnabled && (
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400">
+                  Locked chats:{" "}
+                  <strong className="text-slate-800 dark:text-slate-200">
+                    {currentUser.lockedConversationIds?.length || 0}
+                  </strong>
+                </span>
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
+                  <Icon name="check" size="xs" /> Active
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMsg && (
@@ -268,7 +271,7 @@ export const LockChatSection: React.FC<LockChatSectionProps> = ({
         )}
 
         {/* SETUP FORM: When enabling Chat Lock for the first time */}
-        {isSettingUp && !isEnabled && (
+        {!hasPasskey && (
           <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-5 shadow-xs space-y-4 animate-in slide-in-from-top-2 duration-200">
             <div>
               <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -276,7 +279,7 @@ export const LockChatSection: React.FC<LockChatSectionProps> = ({
                 <span>Create Passkey</span>
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Your passkey can include numbers, letters, symbols, or emojis (e.g. 1234, secret#9, 🔐mychat).
+                Your passkey can include numbers, letters, symbols, or emojis
               </p>
             </div>
 

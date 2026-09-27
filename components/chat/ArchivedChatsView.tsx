@@ -11,6 +11,13 @@ import {
   isConversationPinned,
   pinConversation,
   unpinConversation,
+  deleteConversation,
+  clearConversation,
+  deleteMultipleConversations,
+  clearMultipleConversations,
+  isConversationDeleted,
+  markConversationAsRead,
+  markConversationAsUnread,
 } from "@/lib/firestore/conversationService";
 
 interface ArchivedChatsViewProps {
@@ -35,9 +42,13 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
 
   // Multi-selection state
   const [selectedChatIds, setSelectedChatIds] = useState<Set<string>>(new Set());
+  const [isSelectionModeState, setIsSelectionModeState] = useState<boolean>(false);
+  const isSelectionMode = isSelectionModeState || selectedChatIds.size > 0;
   const [showSelectionMoreMenu, setShowSelectionMoreMenu] = useState(false);
   const [showDeleteMultipleConfirm, setShowDeleteMultipleConfirm] = useState(false);
   const [showClearMultipleConfirm, setShowClearMultipleConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState<Conversation | null>(null);
+  const [alsoDeleteStarred, setAlsoDeleteStarred] = useState(false);
   const [pinRefreshTick, setPinRefreshTick] = useState(0);
 
   // Immediate local state for unarchived items so they vanish immediately from the view
@@ -61,12 +72,11 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  const isSelectionMode = selectedChatIds.size > 0;
-
-  // Filter archived conversations (excluding locally unarchived items)
+  // Filter archived conversations (excluding locally unarchived items & deleted items)
   const archivedConvs = conversations.filter(
     (c) =>
       !locallyUnarchivedIds.includes(c.id) &&
+      !isConversationDeleted(c, currentUser.uid) &&
       isConversationArchived(c, currentUser.uid)
   );
 
@@ -108,12 +118,18 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
     }
   };
 
-  // Pop selection state from URL (triggering popstate)
-  const popSelectionUrl = () => {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("selection") === "true") {
-      window.history.back();
+  // Exit selection mode without page reload - cleanly restores URL
+  const handleExitSelectionMode = () => {
+    setIsSelectionModeState(false);
+    setSelectedChatIds(new Set());
+    setShowSelectionMoreMenu(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("selection") === "true") {
+        url.searchParams.delete("selection");
+        const cleanUrl = url.pathname + (url.search ? url.search : "");
+        window.history.replaceState(null, "", cleanUrl);
+      }
     }
   };
 
@@ -123,42 +139,40 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
       if (typeof window === "undefined") return;
       const params = new URLSearchParams(window.location.search);
       if (params.get("selection") !== "true") {
+        setIsSelectionModeState(false);
         setSelectedChatIds(new Set());
         setShowSelectionMoreMenu(false);
+      } else {
+        setIsSelectionModeState(true);
       }
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, []);
 
-  // Clean up any stale ?selection=true on mount if no chats are selected
+  // Respect ?selection=true on mount without reload
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("selection") === "true" && selectedChatIds.size === 0) {
-      url.searchParams.delete("selection");
-      window.history.replaceState(window.history.state, "", url.toString());
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("selection") === "true") {
+      setIsSelectionModeState(true);
     }
   }, []);
 
   const handleCancelSelection = () => {
-    setSelectedChatIds(new Set());
-    setShowSelectionMoreMenu(false);
-    popSelectionUrl();
+    handleExitSelectionMode();
   };
 
   const handleToggleSelectChat = (convId: string) => {
+    if (!isSelectionMode) {
+      setIsSelectionModeState(true);
+      pushSelectionUrl();
+    }
     setSelectedChatIds((prev) => {
       const next = new Set(prev);
       if (next.has(convId)) {
         next.delete(convId);
-        if (next.size === 0) {
-          popSelectionUrl();
-        }
       } else {
-        if (next.size === 0) {
-          pushSelectionUrl();
-        }
         next.add(convId);
       }
       return next;
@@ -218,7 +232,7 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
   const handleUnarchive = async (conv: Conversation) => {
     setLocallyUnarchivedIds((prev) => [...prev, conv.id]);
     await unarchiveConversation(conv.id, currentUser.uid);
-    showToast("Chat unarchived 📥");
+    showToast("Chat unarchived");
     onArchiveToggle?.();
   };
 
@@ -234,10 +248,9 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
       for (const conv of selectedConvs) {
         await unpinConversation(conv.id, currentUser.uid, true);
       }
-      showToast("Chats unpinned 📌");
+      showToast("Chats unpinned");
       setPinRefreshTick((t) => t + 1);
-      setSelectedChatIds(new Set());
-      popSelectionUrl();
+      handleExitSelectionMode();
     } else {
       const unpinnedSelected = selectedConvs.filter(
         (c) => !isConversationPinned(c, currentUser.uid, true)
@@ -254,23 +267,21 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
       for (const conv of unpinnedSelected) {
         await pinConversation(conv.id, currentUser.uid, true);
       }
-      showToast("Chats pinned to top 📌");
+      showToast("Chats pinned to top");
       setPinRefreshTick((t) => t + 1);
-      setSelectedChatIds(new Set());
-      popSelectionUrl();
+      handleExitSelectionMode();
     }
   };
 
   // Multi-action: Unarchive Selected
   const handleUnarchiveSelected = async () => {
     const ids = Array.from(selectedChatIds);
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    handleExitSelectionMode();
     setLocallyUnarchivedIds((prev) => [...prev, ...ids]);
     for (const id of ids) {
       await unarchiveConversation(id, currentUser.uid);
     }
-    showToast(`${ids.length} ${ids.length === 1 ? "chat" : "chats"} unarchived 📥`);
+    showToast(`${ids.length} ${ids.length === 1 ? "chat" : "chats"} unarchived`);
     onArchiveToggle?.();
   };
 
@@ -280,17 +291,33 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
   };
 
   // 3-Dot Dropdown Actions
-  const handleMarkUnreadSelected = () => {
+  const handleMarkReadSelected = async () => {
     setShowSelectionMoreMenu(false);
-    showToast(
-      `Marked ${selectedChatIds.size} ${selectedChatIds.size === 1 ? "chat" : "chats"} as unread ✉️`
+    const ids = Array.from(selectedChatIds);
+    handleExitSelectionMode();
+    await Promise.allSettled(
+      ids.map((id) => markConversationAsRead(id, currentUser.uid))
     );
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    showToast(
+      `Marked ${ids.length} ${ids.length === 1 ? "chat" : "chats"} as read`
+    );
+  };
+
+  const handleMarkUnreadSelected = async () => {
+    setShowSelectionMoreMenu(false);
+    const ids = Array.from(selectedChatIds);
+    handleExitSelectionMode();
+    await Promise.allSettled(
+      ids.map((id) => markConversationAsUnread(id, currentUser.uid))
+    );
+    showToast(
+      `Marked ${ids.length} ${ids.length === 1 ? "chat" : "chats"} as unread`
+    );
   };
 
   const handleSelectAll = () => {
     setShowSelectionMoreMenu(false);
+    setIsSelectionModeState(true);
     pushSelectionUrl();
     const allIds = new Set(sortedArchivedConvs.map((c) => c.id));
     setSelectedChatIds(allIds);
@@ -298,23 +325,20 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
 
   const handleLockSelected = () => {
     setShowSelectionMoreMenu(false);
-    showToast("Selected chats locked with passkey 🔒");
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    showToast("Selected chats locked with passkey");
+    handleExitSelectionMode();
   };
 
   const handleFavouriteSelected = () => {
     setShowSelectionMoreMenu(false);
-    showToast("Added to favourites ❤️");
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    showToast("Added to favourites");
+    handleExitSelectionMode();
   };
 
   const handleAddToListSelected = () => {
     setShowSelectionMoreMenu(false);
     showToast("Added to list");
-    setSelectedChatIds(new Set());
-    popSelectionUrl();
+    handleExitSelectionMode();
   };
 
   const handleClearSelected = () => {
@@ -405,6 +429,13 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
                     onClick={() => setShowSelectionMoreMenu(false)}
                   />
                   <div className="absolute right-0 top-11 z-50 w-52 bg-[#1E293B] text-slate-100 rounded-2xl shadow-2xl border border-slate-700/80 py-1.5 text-xs animate-in fade-in zoom-in-95 select-none">
+                    <button
+                      type="button"
+                      onClick={handleMarkReadSelected}
+                      className="w-full px-4 py-2.5 text-left flex items-center hover:bg-slate-700/60 font-medium text-[13px] text-slate-200 hover:text-white transition-colors cursor-pointer"
+                    >
+                      Mark as read
+                    </button>
                     <button
                       type="button"
                       onClick={handleMarkUnreadSelected}
@@ -611,28 +642,6 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
             }}
           >
             <div className="py-0.5">
-              {/* 0. Select Chat */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
-                  const targetConv = contextMenu.conversation;
-                  setContextMenu(null);
-                  pushSelectionUrl();
-                  setSelectedChatIds(new Set([targetConv.id]));
-                }}
-                className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
-              >
-                <Icon
-                  name="check_circle"
-                  size="sm"
-                  className="text-slate-400 group-hover:text-[#00A884] dark:group-hover:text-[#00A884] transition-colors"
-                />
-                <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">
-                  Select chat
-                </span>
-              </button>
-
               {/* 1. Unarchive Option */}
               <button
                 type="button"
@@ -670,12 +679,12 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
                       setContextMenu(null);
                       if (isPinned) {
                         await unpinConversation(targetConv.id, currentUser.uid, true);
-                        showToast("Chat unpinned 📌");
+                        showToast("Chat unpinned");
                         setPinRefreshTick((t) => t + 1);
                       } else {
                         const res = await pinConversation(targetConv.id, currentUser.uid, true);
                         if (res.success) {
-                          showToast("Chat pinned 📌");
+                          showToast("Chat pinned");
                           setPinRefreshTick((t) => t + 1);
                         } else {
                           showToast(res.message || "You can only pin up to 4 chats in archived");
@@ -698,36 +707,93 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
                 );
               })()}
 
-              {/* 3. Mark as unread */}
+              {/* 3. Mark as read / unread */}
+              {(() => {
+                const targetConv = contextMenu.conversation;
+                const isUnread = (targetConv.unreadCount?.[currentUser.uid] || 0) > 0;
+                return (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
+                      setContextMenu(null);
+                      if (isUnread) {
+                        await markConversationAsRead(targetConv.id, currentUser.uid);
+                        showToast("Marked as read");
+                      } else {
+                        await markConversationAsUnread(targetConv.id, currentUser.uid);
+                        showToast("Marked as unread");
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
+                  >
+                    <Icon
+                      name={isUnread ? "mark_chat_read" : "mark_chat_unread"}
+                      size="sm"
+                      className="text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200"
+                    />
+                    <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">
+                      {isUnread ? "Mark as read" : "Mark as unread"}
+                    </span>
+                  </button>
+                );
+              })()}
+            </div>
+
+            <div className="py-0.5">
+              {/* Select chat */}
               <button
                 type="button"
                 onClick={() => {
-                  if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
+                  const targetConv = contextMenu.conversation;
                   setContextMenu(null);
-                  showToast("Marked as unread ✉️");
+                  setIsSelectionModeState(true);
+                  pushSelectionUrl();
+                  setSelectedChatIds(new Set([targetConv.id]));
                 }}
                 className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
               >
                 <Icon
-                  name="mark_chat_unread"
+                  name="check_box"
                   size="sm"
                   className="text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200"
                 />
                 <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">
-                  Mark as unread
+                  Select chat
                 </span>
               </button>
-            </div>
 
-            <div className="py-0.5">
-              {/* 4. Delete chat */}
+              {/* Clear chat */}
               <button
                 type="button"
                 onClick={() => {
-                  if (Date.now() - contextMenuOpenedAtRef.current < 400) return;
                   const targetConv = contextMenu.conversation;
                   setContextMenu(null);
-                  handleUnarchive(targetConv);
+                  setAlsoDeleteStarred(false);
+                  setShowClearConfirm(targetConv);
+                }}
+                className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors group cursor-pointer"
+              >
+                <Icon
+                  name="remove_circle_outline"
+                  size="sm"
+                  className="text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200"
+                />
+                <span className="font-medium text-[13.5px] text-slate-800 dark:text-slate-200">
+                  Clear chat
+                </span>
+              </button>
+
+              {/* 4. Delete chat */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const targetConv = contextMenu.conversation;
+                  setContextMenu(null);
+                  await deleteConversation(targetConv.id, currentUser.uid);
+                  if (selectedConversationId === targetConv.id) {
+                    onSelectConversation("");
+                  }
                   showToast("Chat deleted");
                 }}
                 className="w-full px-3.5 py-2.5 text-left flex items-center gap-3.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors group cursor-pointer"
@@ -764,14 +830,18 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const count = selectedChatIds.size;
+                  const ids = Array.from(selectedChatIds);
                   setShowDeleteMultipleConfirm(false);
-                  setSelectedChatIds(new Set());
-                  popSelectionUrl();
+                  handleExitSelectionMode();
+                  await deleteMultipleConversations(ids, currentUser.uid);
+                  if (selectedConversationId && ids.includes(selectedConversationId)) {
+                    onSelectConversation("");
+                  }
                   showToast(`${count} ${count === 1 ? "chat" : "chats"} deleted`);
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm cursor-pointer"
               >
                 Delete
               </button>
@@ -787,9 +857,22 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
               Clear {selectedChatIds.size} {selectedChatIds.size === 1 ? "chat" : "chats"}?
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
               Messages in the selected chats will be cleared from this device.
             </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={alsoDeleteStarred}
+                onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
             <div className="flex justify-end gap-2.5">
               <button
                 onClick={() => setShowClearMultipleConfirm(false)}
@@ -798,14 +881,61 @@ export const ArchivedChatsView: React.FC<ArchivedChatsViewProps> = ({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const count = selectedChatIds.size;
+                  const ids = Array.from(selectedChatIds);
                   setShowClearMultipleConfirm(false);
-                  setSelectedChatIds(new Set());
-                  popSelectionUrl();
+                  handleExitSelectionMode();
+                  await clearMultipleConversations(ids, currentUser.uid, alsoDeleteStarred);
                   showToast(`Messages in ${count} ${count === 1 ? "chat" : "chats"} cleared`);
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Clear Single Chat */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-5 animate-in zoom-in-95 duration-150">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Clear this chat?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+              Messages will be cleared from this device.
+            </p>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={alsoDeleteStarred}
+                onChange={(e) => setAlsoDeleteStarred(e.target.checked)}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-600"
+              />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Also delete starred messages
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => setShowClearConfirm(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const conv = showClearConfirm;
+                  setShowClearConfirm(null);
+                  await clearConversation(conv.id, currentUser.uid, alsoDeleteStarred);
+                  showToast("Chat messages cleared");
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 dark:bg-rose-600 dark:hover:bg-rose-500 transition-colors shadow-sm cursor-pointer"
               >
                 Clear
               </button>

@@ -53,7 +53,7 @@ export const UniversalChatWallpaper: React.FC<UniversalChatWallpaperProps> = ({
       {isCustom ? (
         <div className="absolute inset-0 bg-white/20 dark:bg-slate-950/45 pointer-events-none universal-chat-veil" />
       ) : (
-        <div className="absolute inset-0 bg-white/5 dark:bg-black/15 pointer-events-none universal-chat-veil" />
+        <div className="absolute inset-0 bg-white/5 dark:bg-transparent pointer-events-none universal-chat-veil" />
       )}
 
       {/* Optional AI Companion Tint Layer */}

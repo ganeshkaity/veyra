@@ -302,24 +302,38 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </h4>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-            <span
-              className={`text-[11px] font-medium ${
-                unread > 0
-                  ? "text-[#2563EB] font-bold"
-                  : "text-slate-400 dark:text-slate-500"
-              }`}
-            >
-              {formatTime(conversation.lastMessage?.timestamp || conversation.updatedAt)}
-            </span>
-            {isPinned && (
-              <Icon
-                name="keep"
-                size="xs"
-                className="text-slate-400 dark:text-slate-400 rotate-45 !text-[14px]"
-              />
-            )}
-          </div>
+          {(() => {
+            const isCleared =
+              Boolean(conversation.clearedAt?.[currentUser.uid]) &&
+              (conversation.clearedAt?.[currentUser.uid] || 0) >= (conversation.lastMessage?.timestamp || 0);
+
+            const displayTime = isCleared
+              ? ""
+              : formatTime(conversation.lastMessage?.timestamp || conversation.updatedAt);
+
+            return (
+              <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                {displayTime && (
+                  <span
+                    className={`text-[11px] font-medium ${
+                      unread > 0
+                        ? "text-[#2563EB] font-bold"
+                        : "text-slate-400 dark:text-slate-500"
+                    }`}
+                  >
+                    {displayTime}
+                  </span>
+                )}
+                {isPinned && (
+                  <Icon
+                    name="keep"
+                    size="xs"
+                    className="text-slate-400 dark:text-slate-400 rotate-45 !text-[14px]"
+                  />
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Message preview snippet or typing state */}
@@ -328,26 +342,34 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             <p className="text-xs text-emerald-500 dark:text-emerald-400 font-semibold truncate animate-pulse flex items-center gap-1">
               <span>{typingList[0].displayName || "Someone"} is typing...</span>
             </p>
-          ) : (
-            <p
-              className={`text-xs truncate max-w-[85%] flex items-center gap-1 ${
-                unread > 0
-                  ? "text-slate-900 dark:text-slate-100 font-semibold"
-                  : "text-slate-500 dark:text-slate-400"
-              }`}
-            >
-              {isLastSenderSelf && (
-                <MessageStatusTick
-                  status={isRead ? "read" : isDelivered ? "delivered" : "sent"}
-                  size={14}
-                  className="flex-shrink-0 mr-0.5"
-                />
-              )}
-              <span className="truncate">
-                {conversation.lastMessage?.text || (isAi ? "Always here to help you." : "No messages yet")}
-              </span>
-            </p>
-          )}
+          ) : (() => {
+            const isCleared =
+              Boolean(conversation.clearedAt?.[currentUser.uid]) &&
+              (conversation.clearedAt?.[currentUser.uid] || 0) >= (conversation.lastMessage?.timestamp || 0);
+
+            const snippet = isCleared
+              ? "No messages yet"
+              : conversation.lastMessage?.text || (isAi ? "Always here to help you." : "No messages yet");
+
+            return (
+              <p
+                className={`text-xs truncate max-w-[85%] flex items-center gap-1 ${
+                  unread > 0
+                    ? "text-slate-900 dark:text-slate-100 font-semibold"
+                    : "text-slate-500 dark:text-slate-400"
+                }`}
+              >
+                {!isCleared && isLastSenderSelf && (
+                  <MessageStatusTick
+                    status={isRead ? "read" : isDelivered ? "delivered" : "sent"}
+                    size={14}
+                    className="flex-shrink-0 mr-0.5"
+                  />
+                )}
+                <span className="truncate">{snippet}</span>
+              </p>
+            );
+          })()}
 
           {unread > 0 && (
             <Badge count={unread} variant="brand" className="shadow-sm flex-shrink-0" />

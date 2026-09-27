@@ -229,10 +229,10 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
                 {replyingTo.type === "image"
                   ? "📷 Photo"
                   : replyingTo.type === "gif"
-                  ? "👾 GIF"
-                  : replyingTo.type === "sticker"
-                  ? `${replyingTo.text} Sticker`
-                  : replyingTo.text}
+                    ? "👾 GIF"
+                    : replyingTo.type === "sticker"
+                      ? `${replyingTo.text} Sticker`
+                      : replyingTo.text}
               </p>
             </div>
           </div>
@@ -268,16 +268,9 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
             aria-label="Choose emoji, GIF or sticker"
             className="w-10 h-10 flex items-center justify-center text-slate-400 dark:text-[#8696A0] hover:text-[#00A884] dark:hover:text-white transition-colors active:scale-90 flex-shrink-0 cursor-pointer"
           >
-            {/* WhatsApp style sticker / emoji smiley icon */}
-            <svg
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              fill="currentColor"
-              className="text-slate-400 dark:text-[#8696A0]"
-            >
-              <path d="M12 2C6.48 2 2 6.48 2 12c0 2.3.8 4.4 2.1 6.1L4.1 21l2.9-1c1.5 1.3 3.4 2 5 2 5.52 0 10-4.48 10-10S17.52 2 12 2zm-1 15c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5zm-2.5-6c-.83 0-1.5-.67-1.5-1.5S7.67 8 8.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5 0c-.83 0-1.5-.67-1.5-1.5S12.67 8 13.5 8s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
-            </svg>
+            {/* WhatsApp style sticker / emoji  smiley icon */}
+            {/* <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M2 12C2 17.5228 6.47715 22 12 22C12.6477 22 13.2503 21.7004 13.7083 21.2424L21.2424 13.7083C21.7004 13.2503 22 12.6477 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12Z" stroke="#6c7080ff" stroke-width="1.5"></path> <path d="M12 17C10.8846 17 9.85038 16.6303 9 16" stroke="#6c7080ff" stroke-width="1.5" stroke-linecap="round"></path> <ellipse cx="15" cy="10.5" rx="1" ry="1.5" fill="#6c7080ff"></ellipse> <ellipse cx="9" cy="10.5" rx="1" ry="1.5" fill="#6c7080ff"></ellipse> <path d="M12 22C12 19.2071 12 17.8107 12.3928 16.688C13.0964 14.6773 14.6773 13.0964 16.688 12.3928C17.8107 12 19.2071 12 22 12" stroke="#6c7080ff" stroke-width="1.5"></path> </g></svg> */}
+            <Icon name="sentiment_satisfied" size="md" />
           </button>
 
           {/* Multiline Auto-Resize Textarea with "Message" Placeholder */}
@@ -293,7 +286,7 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
               setIsAttachmentOpen(false);
             }}
             placeholder={
-              isAiConversation ? "Ask Veyra AI..." : "Message"
+              isAiConversation ? "Ask Veyra AI..." : "Type Message"
             }
             autoCapitalize="sentences"
             autoComplete="off"
@@ -314,10 +307,10 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
               className="w-10 h-10 flex items-center justify-center text-slate-400 dark:text-[#8696A0] hover:text-[#00A884] dark:hover:text-white transition-colors active:scale-90 flex-shrink-0 cursor-pointer"
             >
               {/* WhatsApp paperclip icon */}
-              <svg
+              {/* <svg
                 viewBox="0 0 24 24"
-                width="22"
-                height="22"
+                width="18"
+                height="18"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -326,7 +319,8 @@ export const MessageInputBar: React.FC<MessageInputBarProps> = ({
                 className="rotate-[135deg]"
               >
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
+              </svg> */}
+              <Icon name="attach_file" size="md" />
             </button>
           )}
         </div>

@@ -36,7 +36,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onBack }) => {
         <div className="flex flex-col items-center text-center p-6 rounded-3xl bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
           <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg p-2 bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700">
             <Image
-              src="/assets/main_logo.png"
+              src="/assets/favicon.png"
               alt="Veyra"
               width={72}
               height={72}
@@ -46,18 +46,18 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onBack }) => {
 
           <div>
             <h3 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
-              Veyra
+              Veyra Chat
             </h3>
             <p className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[#2563EB] to-[#14B8A6] mt-0.5">
               "Har Baat, Apno Ke Saath."
             </p>
-            <span className="inline-block text-[11px] font-mono px-2.5 py-0.5 mt-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
-              Version 1.0.0 (Production Stable)
+            <span className="inline-block text-[11px] font-mono px-2.5 py-0.5 mt-2 rounded-full text-slate-600 dark:text-slate-400 font-semibold">
+              Version 1.5.9.1 (Beta)
             </span>
           </div>
 
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed pt-1">
-            A fast, private, and modern messaging application built on real Firebase Realtime Database and Firestore architecture.
+            A fast, private, and modern messaging application built on Firestore architecture.
           </p>
         </div>
 
@@ -118,7 +118,6 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onBack }) => {
         {/* Footer info */}
         <div className="text-center text-[11px] text-slate-400 space-y-1">
           <p>© 2026 Veyra Inc. All rights reserved.</p>
-          <p>Built with Google Antigravity & DeepMind Advanced Agentic Coding.</p>
         </div>
       </div>
 
