@@ -11,12 +11,15 @@ import { MessageItem } from "@/components/chat/MessageItem";
 import {
   subscribeToMessages,
   sendMessage,
+  deleteMessageForEveryone,
+  editMessage,
 } from "@/lib/firestore/conversationService";
 import {
   unfollowChannel,
   formatFollowerCount,
   followChannel,
 } from "@/lib/firestore/channelService";
+import { uploadImage } from "@/lib/storage/imgbbService";
 
 interface ChannelViewProps {
   channel: Channel;
@@ -107,6 +110,38 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
     }
   };
 
+  // Back button protection for channel info drawer (back closes info drawer only, without page refresh or leaving channel)
+  const isInfoHistoryPushedRef = useRef(false);
+
+  const handleOpenInfoDrawer = () => {
+    setShowInfoDrawer(true);
+    if (typeof window !== "undefined") {
+      window.history.pushState({ channelInfoModal: channel.id }, "");
+      isInfoHistoryPushedRef.current = true;
+    }
+  };
+
+  const handleCloseInfoDrawer = () => {
+    if (isInfoHistoryPushedRef.current && typeof window !== "undefined") {
+      isInfoHistoryPushedRef.current = false;
+      window.history.back();
+    } else {
+      setShowInfoDrawer(false);
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (showInfoDrawer) {
+        isInfoHistoryPushedRef.current = false;
+        setShowInfoDrawer(false);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [showInfoDrawer]);
+
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !isCreator) return;
@@ -118,25 +153,23 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
 
     try {
       setIsUploadingMedia(true);
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        await sendMessage(channel.id, {
-          conversationId: channel.id,
-          senderId: currentUser.uid,
-          senderName: channel.name,
-          senderAvatar: channel.avatarUrl || channel.avatar || currentUser.avatarUrl,
-          text: "",
-          type: "image",
-          mediaUrl: base64,
-        });
-        setIsUploadingMedia(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
+      const res = await uploadImage(file, "hd");
+      await sendMessage(channel.id, {
+        conversationId: channel.id,
+        senderId: currentUser.uid,
+        senderName: channel.name,
+        senderAvatar: channel.avatarUrl || channel.avatar || currentUser.avatarUrl,
+        text: "",
+        type: "image",
+        mediaUrl: res.url || res.display_url,
+      });
+      showToast("Broadcast photo posted 📷");
+    } catch (err: any) {
       console.error("Media upload error:", err);
-      showToast("Failed to upload photo");
+      showToast(err.message || "Failed to upload photo");
+    } finally {
       setIsUploadingMedia(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -196,7 +229,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
           </button>
 
           <div
-            onClick={() => setShowInfoDrawer(true)}
+            onClick={handleOpenInfoDrawer}
             className="flex items-center gap-3 min-w-0 cursor-pointer group"
           >
             <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
@@ -258,7 +291,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
 
           {/* Info Button */}
           <button
-            onClick={() => setShowInfoDrawer(true)}
+            onClick={handleOpenInfoDrawer}
             className="p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Channel Info"
           >
@@ -359,15 +392,32 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
               key={msg.id}
               message={msg}
               currentUser={currentUser}
-              isGroup={true}
+              isGroup={false}
+              isChannel={true}
+              isChannelCreator={isCreator}
               onReply={() => {}}
               onForward={(m) => {
                 navigator.clipboard.writeText(m.text || "");
                 showToast("Update copied to clipboard 📋");
               }}
-              onEdit={() => {}}
-              onDeleteForEveryone={() => {}}
-              onDeleteForMe={() => {}}
+              onEdit={async (m) => {
+                if (!isCreator) return;
+                const newText = prompt("Edit broadcast update:", m.text);
+                if (newText && newText.trim() && newText !== m.text) {
+                  await editMessage(channel.id, m.id, newText.trim());
+                  showToast("Update edited");
+                }
+              }}
+              onDeleteForEveryone={async (mId) => {
+                if (!isCreator) return;
+                await deleteMessageForEveryone(channel.id, mId);
+                showToast("Update deleted");
+              }}
+              onDeleteForMe={async (mId) => {
+                if (!isCreator) return;
+                await deleteMessageForEveryone(channel.id, mId);
+                showToast("Update deleted");
+              }}
             />
           ))
         )}
@@ -429,11 +479,8 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
         </form>
       ) : (
         /* FOLLOWER: Read-only WhatsApp/Telegram Style Banner */
-        <div className="p-3.5 px-6 bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 text-center select-none shadow-lg z-20 flex items-center justify-center gap-2">
-          <Icon name="lock" size="xs" className="text-slate-400" />
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Only the channel creator can send updates
-          </span>
+        <div>
+          
         </div>
       )}
 
@@ -445,7 +492,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
           role="dialog"
           aria-modal="true"
           className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
-          onClick={() => setShowInfoDrawer(false)}
+          onClick={handleCloseInfoDrawer}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -457,7 +504,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
                 Channel Info
               </span>
               <button
-                onClick={() => setShowInfoDrawer(false)}
+                onClick={handleCloseInfoDrawer}
                 className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
               >
                 <Icon name="close" size="sm" />

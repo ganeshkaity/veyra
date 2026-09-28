@@ -134,7 +134,7 @@ export default function ExploreChannelsPage() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#2563EB] hover:bg-blue-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
           >
             <Icon name="add" size="xs" />
-            <span>Create Channel</span>
+            <span>Create</span>
           </button>
         </div>
 
@@ -222,7 +222,7 @@ export default function ExploreChannelsPage() {
                   <div
                     key={ch.id}
                     onClick={() => router.push(`/channel?channel-id=${ch.id}`)}
-                    className="flex items-center justify-between p-4 sm:p-5 hover:bg-slate-50/80 dark:hover:bg-slate-850/60 transition-colors cursor-pointer select-none group"
+                    className="flex items-center justify-between p-4 sm:p-5 hover:bg-black/20 transition-colors cursor-pointer select-none group"
                   >
                     <div className="flex items-center gap-3.5 min-w-0 pr-3">
                       <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">

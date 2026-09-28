@@ -22,6 +22,7 @@ import { ArchivedChatsView } from "@/components/chat/ArchivedChatsView";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { usePwa } from "@/components/providers/PwaProvider";
+import { VeyraAiFloatingButton } from "@/components/ai/VeyraAiFloatingButton";
 
 export interface ChatPageProps {
   initialArchive?: boolean;
@@ -352,7 +353,7 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
   }
 
   return (
-    <div className="flex h-[100dvh] h-screen w-full max-w-[100vw] overflow-hidden bg-[var(--bg-app)]">
+    <div className="flex h-[100dvh] h-screen w-full max-w-[100vw] overflow-hidden bg-[var(--bg-app)] overscroll-y-none">
       {/* Desktop Left Sidebar Navigation */}
       <DesktopSidebarNav
         activeTab={activeTab}
@@ -361,6 +362,8 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
             setActiveTab("chats");
           } else if (tab === "status") {
             router.push("/status");
+          } else if (tab === "calls") {
+            router.push("/calls");
           } else if (tab === "ai") {
             handleOpenAi();
           } else if (tab === "you") {
@@ -497,22 +500,32 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
 
       {/* Mobile Bottom Navigation (Hidden when inside active conversation on mobile) */}
       {!selectedConversationId && (
-        <MobileBottomNav
-          activeTab={activeTab}
-          onTabChange={(tab) => {
-            if (tab === "chats") {
-              setActiveTab("chats");
-            } else if (tab === "status") {
-              router.push("/status");
-            } else if (tab === "ai") {
-              handleOpenAi();
-            } else if (tab === "you") {
-              router.push("/profile");
-            } else if (tab === "settings") {
-              router.push("/setting");
-            }
-          }}
-        />
+        <>
+          <MobileBottomNav
+            activeTab={activeTab}
+            onTabChange={(tab) => {
+              if (tab === "chats") {
+                setActiveTab("chats");
+              } else if (tab === "status") {
+                router.push("/status");
+              } else if (tab === "calls") {
+                router.push("/calls");
+              } else if (tab === "ai") {
+                handleOpenAi();
+              } else if (tab === "you") {
+                router.push("/profile");
+              } else if (tab === "settings") {
+                router.push("/setting");
+              }
+            }}
+          />
+          <div className="md:hidden">
+            <VeyraAiFloatingButton
+              onClick={handleOpenAi}
+              className="bottom-20 right-4"
+            />
+          </div>
+        </>
       )}
 
       {/* New Chat Modal */}

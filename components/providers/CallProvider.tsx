@@ -41,6 +41,7 @@ import {
 
 import { callSounds } from "@/lib/webrtc/audioContextHelper";
 import { sendMessage } from "@/lib/firestore/conversationService";
+import { recordCallLog } from "@/lib/firestore/callLogService";
 import { webrtcLogger } from "@/lib/webrtc/webrtcLogger";
 import { VoiceCallModal } from "@/components/call/VoiceCallModal";
 
@@ -346,8 +347,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         callSounds.playEndCallTone();
       }
 
+      // Determine canonical conversation ID (so calls are inside the existing chat, not creating a separate one)
+      const partnerId = currentRoleRef.current === "caller" ? activeCall?.receiverId : activeCall?.callerId;
+      const sortedIds = user && partnerId ? [user.uid, partnerId].sort() : [];
+      const canonicalConvId = sortedIds.length === 2 ? `dm_${sortedIds[0]}_${sortedIds[1]}` : null;
+      const targetConvId = activeCall?.conversationId && !activeCall.conversationId.startsWith("call_")
+        ? activeCall.conversationId
+        : canonicalConvId;
+
       // Record call message in chat history as a conversation bubble (matching Image 2)
-      if (activeCall?.conversationId && user) {
+      if (targetConvId && user) {
         try {
           const typeLabel = isVideo ? "Video call" : "Voice call";
           let callStatus: "ended" | "missed" | "declined" = "ended";
@@ -364,9 +373,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             subtitle = "No answer";
           }
 
-          if (currentRoleRef.current === "caller" && activeCall.callerId) {
-            await sendMessage(activeCall.conversationId, {
-              conversationId: activeCall.conversationId,
+          if (currentRoleRef.current === "caller" && activeCall?.callerId) {
+            await sendMessage(targetConvId, {
+              conversationId: targetConvId,
               senderId: activeCall.callerId,
               senderName: activeCall.callerName || profile?.displayName || "You",
               text: `${typeLabel} • ${subtitle}`,
@@ -381,6 +390,36 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 receiverId: activeCall.receiverId,
               },
             });
+
+            // Write call log for caller (outgoing)
+            recordCallLog(activeCall.callerId, {
+              callId: activeCall.callId,
+              partnerId: activeCall.receiverId,
+              partnerName: activeCall.receiverName || "Contact",
+              partnerAvatar: activeCall.receiverAvatar || "",
+              callType: isVideo ? "video" : "voice",
+              direction: "outgoing",
+              status: finalDuration > 0 ? "connected" : (terminalState === "missed" ? "missed" : "declined"),
+              duration: finalDuration,
+              timestamp: Date.now(),
+              conversationId: targetConvId || undefined,
+            }).catch(() => {});
+
+            // Write call log for receiver (incoming)
+            if (activeCall.receiverId) {
+              recordCallLog(activeCall.receiverId, {
+                callId: activeCall.callId,
+                partnerId: activeCall.callerId,
+                partnerName: activeCall.callerName || "Contact",
+                partnerAvatar: activeCall.callerAvatar || "",
+                callType: isVideo ? "video" : "voice",
+                direction: "incoming",
+                status: finalDuration > 0 ? "connected" : (terminalState === "missed" ? "missed" : "declined"),
+                duration: finalDuration,
+                timestamp: Date.now(),
+                conversationId: targetConvId || undefined,
+              }).catch(() => {});
+            }
           }
         } catch (_) {}
       }
@@ -391,8 +430,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         purgeCallData(activeCall.callId, activeCall.receiverId);
       }
 
-      // Return to idle after UI feedback pause
-      const pauseDuration = reason === "failed" ? 3500 : 1800;
+      // Return to idle quickly so back button and page navigation work immediately
+      const pauseDuration = reason === "failed" ? 2000 : 350;
       if (resetIdleTimerRef.current) clearTimeout(resetIdleTimerRef.current);
       resetIdleTimerRef.current = setTimeout(() => {
         setCallState("idle");
@@ -424,6 +463,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (ringingTimeoutRef.current) {
       clearTimeout(ringingTimeoutRef.current);
       ringingTimeoutRef.current = null;
+    }
+
+    // Persist connected state to RTDB so peers stay synchronized
+    const activeCallId = activeCallIdRef.current || currentCallRef.current?.callId;
+    if (activeCallId) {
+      updateCallStatus(activeCallId, "connected").catch(() => {});
     }
 
     // Cancel any disconnected recovery timer
@@ -654,9 +699,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentRoleRef.current = "caller";
     setCallType(requestedType);
 
+    const partnerId = targetUser.uid;
+    const sortedUserIds = [user.uid, partnerId].sort();
+    const canonicalConvId = `dm_${sortedUserIds[0]}_${sortedUserIds[1]}`;
+    const resolvedConvId = targetUser.conversationId && !targetUser.conversationId.startsWith("call_")
+      ? targetUser.conversationId
+      : canonicalConvId;
+
     const initialCallData: CallData = {
       callId,
-      conversationId: targetUser.conversationId,
+      conversationId: resolvedConvId,
       callType: requestedType,
       callerId: user.uid,
       callerName: profile.displayName || "Caller",
@@ -792,7 +844,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await createCallRecord(initialCallData);
       await notifyReceiverIncomingCall(targetUser.uid, {
         callId,
-        conversationId: targetUser.conversationId,
+        conversationId: resolvedConvId,
         callType: requestedType,
         callerId: user.uid,
         callerName: profile.displayName || "Caller",
@@ -865,6 +917,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(updatedCall.answer));
             setCallState("connecting");
+            if (ringingTimeoutRef.current) {
+              clearTimeout(ringingTimeoutRef.current);
+              ringingTimeoutRef.current = null;
+            }
             await flushQueuedIceCandidates(pc);
           } catch (err) {
             webrtcLogger.error("Failed to set remote description on answer:", err);
@@ -907,9 +963,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     await clearReceiverIncomingCall(user.uid);
 
+    const partnerId = incomingCall.callerId;
+    const sortedUserIds = [user.uid, partnerId].sort();
+    const canonicalConvId = `dm_${sortedUserIds[0]}_${sortedUserIds[1]}`;
+    const resolvedConvId = incomingCall.conversationId && !incomingCall.conversationId.startsWith("call_")
+      ? incomingCall.conversationId
+      : canonicalConvId;
+
     setCurrentCall({
       callId,
-      conversationId: incomingCall.conversationId,
+      conversationId: resolvedConvId,
       callType: acceptedType,
       callerId: incomingCall.callerId,
       callerName: incomingCall.callerName,
@@ -922,6 +985,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     setCallState("connecting");
+    updateCallStatus(callId, "connecting").catch(() => {});
     setIncomingCall(null);
     setIsMuted(false);
     setIsCameraOff(false);
@@ -1259,6 +1323,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const pc = peerConnectionRef.current;
     const currentStream = localStreamRef.current;
+    const activeCallId = currentCallRef.current?.callId || activeCallIdRef.current;
+    const role = currentRoleRef.current || (currentCallRef.current?.callerId === user?.uid ? "caller" : "receiver");
 
     if (!currentStream) return;
 
@@ -1272,8 +1338,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       webrtcLogger.log(`Local camera toggled: ${cameraNowOff ? "OFF" : "ON"}`);
 
       // Sync camera status to Firebase
-      if (currentCallRef.current?.callId && currentRoleRef.current) {
-        updateCallCameraStatus(currentCallRef.current.callId, currentRoleRef.current, cameraNowOff);
+      if (activeCallId && role) {
+        updateCallCameraStatus(activeCallId, role, cameraNowOff);
       }
     } else if (isCameraOff) {
       // Camera was disabled/never acquired, re-acquire new camera track
@@ -1309,8 +1375,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localVideoRef.current.srcObject = currentStream;
           }
 
-          if (currentCallRef.current?.callId && currentRoleRef.current) {
-            updateCallCameraStatus(currentCallRef.current.callId, currentRoleRef.current, false);
+          if (activeCallId && role) {
+            updateCallCameraStatus(activeCallId, role, false);
           }
         }
       } catch (err) {
@@ -1426,7 +1492,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handleBeforeUnload);
-      cleanupMediaAndPeer();
     };
   }, [cleanupMediaAndPeer]);
 

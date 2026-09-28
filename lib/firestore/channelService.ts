@@ -19,182 +19,57 @@ import {
 import { db } from "../firebase/client";
 import { Channel, Conversation, UserProfile } from "@/types";
 
-const INITIAL_CHANNELS: Array<Omit<Channel, "id" | "createdAt" | "updatedAt">> = [
-  {
-    name: "WhatsApp",
-    avatar: "https://images.unsplash.com/photo-1614680376593-902f749f7ffc?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1614680376593-902f749f7ffc?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "News & Updates",
-    description: "The official WhatsApp Channel. Stay up to date with new features, updates and tips.",
-    createdBy: "system",
-    createdByName: "WhatsApp Team",
-    followers: [],
-    followerCount: 154200000,
-  },
-  {
-    name: "Real Madrid C.F.",
-    avatar: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "Sports",
-    description: "Welcome to the official Real Madrid Channel! Matches, highlights, press conferences and #HalaMadrid news.",
-    createdBy: "system",
-    createdByName: "Real Madrid",
-    followers: [],
-    followerCount: 56900000,
-  },
-  {
-    name: "Tech Radar",
-    avatar: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "Tech & Science",
-    description: "Daily technology news, gadget reviews, phone releases, and breakthrough AI developments.",
-    createdBy: "system",
-    createdByName: "TechRadar Media",
-    followers: [],
-    followerCount: 14200000,
-  },
-  {
-    name: "National Geographic",
-    avatar: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "Nature & Wildlife",
-    description: "Inspiring people to care about the planet, photography, conservation and science since 1888.",
-    createdBy: "system",
-    createdByName: "NatGeo Team",
-    followers: [],
-    followerCount: 29800000,
-  },
-  {
-    name: "Netflix Updates",
-    avatar: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "Entertainment",
-    description: "New releases, trailers, behind the scenes, and watchlists for what to stream next on Netflix.",
-    createdBy: "system",
-    createdByName: "Netflix",
-    followers: [],
-    followerCount: 42100000,
-  },
-  {
-    name: "BBC News",
-    avatar: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "News",
-    description: "Trusted global news, breaking alerts, documentaries and verified reporting from across the world.",
-    createdBy: "system",
-    createdByName: "BBC",
-    followers: [],
-    followerCount: 38700000,
-  },
-  {
-    name: "Spotify Trends",
-    avatar: "https://images.unsplash.com/photo-1611339555312-e607c8352fd7?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1611339555312-e607c8352fd7?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "Music",
-    description: "Top charts, fresh releases, artist highlights and trending tracks worldwide.",
-    createdBy: "system",
-    createdByName: "Spotify",
-    followers: [],
-    followerCount: 21500000,
-  },
-  {
-    name: "NASA Exploration",
-    avatar: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=160&auto=format&fit=crop&q=80",
-    avatarUrl: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=160&auto=format&fit=crop&q=80",
-    verified: true,
-    category: "Science & Space",
-    description: "Discover the cosmos with Webb telescope captures, Artemis mission milestones, and Martian rover updates.",
-    createdBy: "system",
-    createdByName: "NASA",
-    followers: [],
-    followerCount: 33400000,
-  },
-];
+
 
 /**
- * Seeds initial database channels if the channels collection has fewer than 4 items
+ * Cleans up and deletes any legacy precoded system channels from Firestore
  */
-export async function seedInitialChannelsIfEmpty(): Promise<void> {
+export async function cleanupPrecodedChannels(): Promise<void> {
   try {
     const channelsRef = collection(db, "channels");
-    const snap = await getDocs(query(channelsRef, limit(4)));
-    if (snap.size >= 4) return;
-
-    const now = Date.now();
-    for (const item of INITIAL_CHANNELS) {
-      const slug = item.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
-      const channelDocRef = doc(channelsRef, slug);
-      const existing = await getDoc(channelDocRef);
-      if (!existing.exists()) {
-        const channelData: Channel = {
-          ...item,
-          id: slug,
-          createdAt: now,
-          updatedAt: now,
-          conversationId: slug,
-        };
-        await setDoc(channelDocRef, channelData);
-
-        // Also ensure a corresponding conversation exists for broadcast updates
-        const convRef = doc(db, "conversations", slug);
-        const convSnap = await getDoc(convRef);
-        if (!convSnap.exists()) {
-          const convData: Conversation = {
-            id: slug,
-            type: "channel",
-            channelId: slug,
-            channelName: item.name,
-            channelAvatar: item.avatarUrl || item.avatar,
-            channelCreatedBy: item.createdBy,
-            participantIds: [item.createdBy],
-            participants: {
-              [item.createdBy]: {
-                uid: item.createdBy,
-                displayName: item.createdByName || item.name,
-                username: slug,
-                avatarUrl: item.avatarUrl || "",
-              },
-            },
-            unreadCount: {},
-            createdAt: now,
-            updatedAt: now,
-          };
-          await setDoc(convRef, convData);
-        }
-      }
+    const snap = await getDocs(query(channelsRef, where("createdBy", "==", "system")));
+    for (const d of snap.docs) {
+      await deleteDoc(d.ref);
+      try {
+        await deleteDoc(doc(db, "conversations", d.id));
+      } catch (_) {}
     }
   } catch (err) {
-    console.warn("Non-fatal: seedInitialChannels error:", err);
+    console.warn("Non-fatal: cleanupPrecodedChannels error:", err);
   }
 }
 
 /**
- * Subscribes to all channels (up to limitCount) for the explore page
+ * Legacy seeding removed - now acts as a cleanup to purge any precoded channels
+ */
+export async function seedInitialChannelsIfEmpty(): Promise<void> {
+  await cleanupPrecodedChannels();
+}
+
+/**
+ * Subscribes to all real user-created channels (up to limitCount) for the explore page
  */
 export function subscribeToAllChannels(
   callback: (channels: Channel[]) => void,
   limitCount: number = 50
 ): Unsubscribe {
   const channelsRef = collection(db, "channels");
-  const q = query(channelsRef, limit(limitCount));
+  const q = query(channelsRef, limit(limitCount + 20));
 
   return onSnapshot(
     q,
     (snapshot) => {
       const list: Channel[] = [];
       snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Channel);
+        const data = d.data();
+        // Remove and exclude any precoded / system channels
+        if (data.createdBy !== "system") {
+          list.push({ id: d.id, ...data } as Channel);
+        }
       });
       // Sort by followerCount desc
       list.sort((a, b) => (b.followerCount || 0) - (a.followerCount || 0));
-      callback(list);
+      callback(list.slice(0, limitCount));
     },
     (err) => {
       console.error("subscribeToAllChannels error:", err);
@@ -218,7 +93,10 @@ export function subscribeToUserFollowedChannels(
     (snapshot) => {
       const list: Channel[] = [];
       snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Channel);
+        const data = d.data();
+        if (data.createdBy !== "system") {
+          list.push({ id: d.id, ...data } as Channel);
+        }
       });
       callback(list);
     },

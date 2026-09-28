@@ -640,6 +640,16 @@ export const ChatList: React.FC<ChatListProps> = ({
       return false;
     }
 
+    // Exclude Channels from main chat list (channels belong strictly to Updates section)
+    if (c.type === "channel") {
+      return false;
+    }
+
+    // Exclude any temporary call-signaling documents if any were stored
+    if (c.id.startsWith("call_")) {
+      return false;
+    }
+
     // Exclude Veyra AI from chat list
     if (c.type === "ai" || c.id === VEYRA_AI_CONVERSATION_ID || c.id.startsWith("ai_") || c.participantIds?.includes("veyra_ai")) {
       return false;

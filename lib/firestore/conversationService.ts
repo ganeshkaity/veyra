@@ -485,6 +485,8 @@ export async function sendMessage(
           id: conversationId,
           participantIds: conversationId.startsWith("ai_")
             ? [message.senderId, "veyra_ai"]
+            : conversationId.startsWith("dm_")
+            ? conversationId.replace("dm_", "").split("_")
             : [message.senderId],
           type: conversationId.startsWith("ai_") ? "ai" : "direct",
           lastMessage: {

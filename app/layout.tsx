@@ -87,7 +87,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
+      <body className="min-h-full flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] overscroll-y-none">
         <ThemeProvider>
           <AuthProvider>
             <AlertModalProvider>

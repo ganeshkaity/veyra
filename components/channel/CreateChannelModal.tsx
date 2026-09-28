@@ -7,6 +7,7 @@ import { createChannel } from "@/lib/firestore/channelService";
 import { Channel } from "@/types";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
+import { uploadAvatar } from "@/lib/storage/imgbbService";
 
 interface CreateChannelModalProps {
   isOpen: boolean;
@@ -111,7 +112,16 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({
       setIsSubmitting(true);
       setErrorMsg(null);
 
-      let finalAvatarUrl = avatarPreview || "";
+      let finalAvatarUrl = "";
+      if (avatarFile) {
+        try {
+          const uploadRes = await uploadAvatar(avatarFile);
+          finalAvatarUrl = uploadRes.url || uploadRes.display_url || "";
+        } catch (uploadErr: any) {
+          console.error("Avatar upload to imgBB failed:", uploadErr);
+          throw new Error("Failed to upload channel icon image to server. Please try again.");
+        }
+      }
 
       // Create channel in Firestore
       const newChannel = await createChannel(

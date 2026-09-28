@@ -26,6 +26,8 @@ interface MessageItemProps {
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
   isGroup?: boolean;
+  isChannel?: boolean;
+  isChannelCreator?: boolean;
   isSearchMatch?: boolean;
   isCurrentSearchMatch?: boolean;
   isSelectionMode?: boolean;
@@ -46,6 +48,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   isFirstInGroup = true,
   isLastInGroup = true,
   isGroup = false,
+  isChannel = false,
+  isChannelCreator = false,
   isSearchMatch = false,
   isCurrentSearchMatch = false,
   isSelectionMode = false,
@@ -1089,21 +1093,23 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 <span>Forward</span>
               </button>
 
-              {/* Pin */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (Date.now() - menuOpenedAtRef.current < 350) return;
-                  handleTogglePin();
-                }}
-                className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800/90 transition-colors cursor-pointer"
-              >
-                <Icon name="push_pin" size="xs" className="text-slate-400 dark:text-slate-400" />
-                <span>{isPinned ? "Unpin" : "Pin"}</span>
-              </button>
+              {/* Pin (only for regular chats or channel creator) */}
+              {(!isChannel || isChannelCreator) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (Date.now() - menuOpenedAtRef.current < 350) return;
+                    handleTogglePin();
+                  }}
+                  className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800/90 transition-colors cursor-pointer"
+                >
+                  <Icon name="push_pin" size="xs" className="text-slate-400 dark:text-slate-400" />
+                  <span>{isPinned ? "Unpin" : "Pin"}</span>
+                </button>
+              )}
 
-              {/* Ask Veyra AI (only for text messages, not for media/stickers/gifs) */}
-              {message.type === "text" && (
+              {/* Ask Veyra AI (only for regular direct text messages, not channels) */}
+              {!isChannel && message.type === "text" && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1119,26 +1125,28 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 </button>
               )}
 
-              {/* Star */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (Date.now() - menuOpenedAtRef.current < 350) return;
-                  handleToggleStar();
-                }}
-                className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800/90 transition-colors cursor-pointer"
-              >
-                <Icon
-                  name="star"
-                  size="xs"
-                  className={isStarred ? "text-amber-400" : "text-slate-400 dark:text-slate-400"}
-                  fill={isStarred}
-                />
-                <span>{isStarred ? "Unstar" : "Star"}</span>
-              </button>
+              {/* Star (only for regular chats or channel creator) */}
+              {(!isChannel || isChannelCreator) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (Date.now() - menuOpenedAtRef.current < 350) return;
+                    handleToggleStar();
+                  }}
+                  className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800/90 transition-colors cursor-pointer"
+                >
+                  <Icon
+                    name="star"
+                    size="xs"
+                    className={isStarred ? "text-amber-400" : "text-slate-400 dark:text-slate-400"}
+                    fill={isStarred}
+                  />
+                  <span>{isStarred ? "Unstar" : "Star"}</span>
+                </button>
+              )}
 
-              {/* Edit message (only within 2 days and text messages) */}
-              {canEdit && message.type === "text" && (
+              {/* Edit message (only for channel creator in channels, or sender in direct chats) */}
+              {((isChannel && isChannelCreator) || (!isChannel && canEdit)) && message.type === "text" && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1153,19 +1161,21 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 </button>
               )}
 
-              {/* Delete */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (Date.now() - menuOpenedAtRef.current < 350) return;
-                  setShowDeleteConfirm(true);
-                  closeMenu();
-                }}
-                className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors cursor-pointer"
-              >
-                <Icon name="delete" size="xs" className="text-red-500" />
-                <span>Delete</span>
-              </button>
+              {/* Delete (only for regular chats or channel creator) */}
+              {(!isChannel || isChannelCreator) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (Date.now() - menuOpenedAtRef.current < 350) return;
+                    setShowDeleteConfirm(true);
+                    closeMenu();
+                  }}
+                  className="w-full px-3.5 py-2 text-left flex items-center gap-3 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors cursor-pointer"
+                >
+                  <Icon name="delete" size="xs" className="text-red-500" />
+                  <span>Delete</span>
+                </button>
+              )}
             </div>
           </div>
         </>,

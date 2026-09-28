@@ -42,19 +42,22 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
     callState === "connecting" ||
     callState === "connected";
 
-  // Android TWA / Browser back button protection during an active call
+  const isHistoryPushedRef = useRef(false);
+
+  // Android TWA / Browser back button management during an active call
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     if (isCallActive) {
-      // Push call state marker to browser history to trap back button
-      window.history.pushState({ veyraCallActive: true }, "", window.location.href);
+      if (!isHistoryPushedRef.current) {
+        window.history.pushState({ veyraCallActive: true }, "");
+        isHistoryPushedRef.current = true;
+      }
 
       const handlePopState = () => {
-        // Intercept back button and warn user
-        setShowLeaveConfirm(true);
-        // Push state again so page doesn't unmount
-        window.history.pushState({ veyraCallActive: true }, "", window.location.href);
+        isHistoryPushedRef.current = false;
+        // User pressed back button during active call: end the call
+        endCall();
       };
 
       window.addEventListener("popstate", handlePopState);
@@ -63,16 +66,17 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
       };
     } else {
       setShowLeaveConfirm(false);
+      // When call finishes, pop the pushed call history entry so browser history is clean
+      if (isHistoryPushedRef.current) {
+        isHistoryPushedRef.current = false;
+        window.history.back();
+      }
     }
-  }, [isCallActive]);
+  }, [isCallActive, endCall]);
 
   const handleConfirmLeave = async () => {
     setShowLeaveConfirm(false);
     await endCall();
-    // After ending call, navigate back
-    if (typeof window !== "undefined") {
-      window.history.back();
-    }
   };
 
   const handleCancelLeave = () => {

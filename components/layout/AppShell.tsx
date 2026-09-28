@@ -7,6 +7,8 @@ import { DesktopSidebarNav } from "@/components/chat/DesktopSidebarNav";
 import { MobileBottomNav } from "@/components/chat/MobileBottomNav";
 import { NavigationTab } from "@/constants/brand";
 
+import { VeyraAiFloatingButton } from "@/components/ai/VeyraAiFloatingButton";
+
 interface AppShellProps {
   children: React.ReactNode;
   activeTab?: NavigationTab;
@@ -45,6 +47,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeTab }) => {
     activeTab ||
     (pathname.startsWith("/status")
       ? "status"
+      : pathname.startsWith("/calls")
+      ? "calls"
       : pathname.startsWith("/profile")
       ? "you"
       : pathname.startsWith("/setting")
@@ -54,6 +58,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeTab }) => {
   const handleTabChange = (tab: NavigationTab) => {
     if (tab === "chats") router.push("/chat");
     else if (tab === "status") router.push("/status");
+    else if (tab === "calls") router.push("/calls");
     else if (tab === "ai") handleOpenAi();
     else if (tab === "you") router.push("/profile");
     else if (tab === "settings") router.push("/setting");
@@ -74,6 +79,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeTab }) => {
     );
   }
 
+  const isCallsPage = currentTab === "calls";
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-[#0B1120]">
       <DesktopSidebarNav
@@ -88,6 +95,12 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeTab }) => {
         activeTab={currentTab}
         onTabChange={handleTabChange}
       />
+      <div className="md:hidden">
+        <VeyraAiFloatingButton
+          onClick={handleOpenAi}
+          className={isCallsPage ? "bottom-36 right-4" : "bottom-20 right-4"}
+        />
+      </div>
     </div>
   );
 };

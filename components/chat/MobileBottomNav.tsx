@@ -16,7 +16,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-slate-800/90 px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))] flex items-center justify-around select-none shadow-lg">
-      {NAVIGATION_ITEMS.map((item) => {
+      {NAVIGATION_ITEMS.filter((item) => item.id !== "ai").map((item) => {
         const isActive = activeTab === item.id;
         return (
           <button
@@ -30,19 +30,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
           >
-            {item.id === "ai" ? (
-              <div className="w-5 h-5 rounded-md overflow-hidden flex items-center justify-center">
-                <Image
-                  src="/assets/veyra_ai_logo.png"
-                  alt="Veyra AI"
-                  width={20}
-                  height={20}
-                  className="object-contain"
-                />
-              </div>
-            ) : (
-              <Icon name={item.icon} size="sm" fill={isActive} />
-            )}
+            <Icon name={item.icon} size="sm" fill={isActive} />
             <span className="text-[11px] font-medium tracking-tight leading-tight">
               {item.label}
             </span>

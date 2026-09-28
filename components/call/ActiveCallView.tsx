@@ -204,19 +204,56 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     }
   }, [pipCoords]);
 
-  const handleContainerClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest("button") || target.closest(".pip-preview-box")) {
-      resetControlsTimeout();
-      return;
-    }
+  const lastTouchTimeRef = useRef(0);
+  const touchStartCoordsRef = useRef<{ x: number; y: number } | null>(null);
+
+  const toggleControlsVisibility = () => {
     if (isVideo && !isTerminalState) {
       setAreControlsVisible((prev) => {
         const next = !prev;
-        if (next) resetControlsTimeout();
+        if (next) {
+          resetControlsTimeout();
+        } else if (hideControlsTimerRef.current) {
+          clearTimeout(hideControlsTimerRef.current);
+          hideControlsTimerRef.current = null;
+        }
         return next;
       });
     }
+  };
+
+  const handleScreenTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchStartCoordsRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      };
+    }
+  };
+
+  const handleScreenTouchEnd = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest(".pip-preview-box")) {
+      return;
+    }
+    if (touchStartCoordsRef.current && e.changedTouches.length > 0) {
+      const dx = Math.abs(e.changedTouches[0].clientX - touchStartCoordsRef.current.x);
+      const dy = Math.abs(e.changedTouches[0].clientY - touchStartCoordsRef.current.y);
+      if (dx > 15 || dy > 15) return;
+    }
+    lastTouchTimeRef.current = Date.now();
+    toggleControlsVisibility();
+  };
+
+  const handleScreenClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest(".pip-preview-box")) {
+      return;
+    }
+    if (Date.now() - lastTouchTimeRef.current < 500) {
+      return;
+    }
+    toggleControlsVisibility();
   };
 
   const handlePipPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -274,7 +311,9 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
       aria-modal="true"
       aria-labelledby="active-call-title"
       onMouseMove={resetControlsTimeout}
-      onClick={handleContainerClick}
+      onClick={handleScreenClick}
+      onTouchStart={handleScreenTouchStart}
+      onTouchEnd={handleScreenTouchEnd}
       className="fixed inset-0 z-[110] flex flex-col justify-between bg-[#0e1017] text-white select-none overflow-hidden animate-in fade-in duration-300"
     >
       {/* ========================================================= */}
@@ -296,9 +335,18 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             autoPlay
             playsInline
             webkit-playsinline="true"
-            className={`w-full h-full object-cover sm:object-contain bg-black transition-opacity duration-300 ${
-              hasRemoteVideo && (isConnected || callState === "connecting") ? "opacity-100" : "opacity-0 pointer-events-none"
+            className={`w-full h-full object-cover sm:object-contain bg-black transition-opacity duration-300 pointer-events-none select-none ${
+              hasRemoteVideo && (isConnected || callState === "connecting") ? "opacity-100" : "opacity-0"
             }`}
+          />
+
+          {/* Full-screen Tap Capture Area for Toggling Controls on Mobile & Desktop */}
+          <div
+            className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
+            onClick={handleScreenClick}
+            onTouchStart={handleScreenTouchStart}
+            onTouchEnd={handleScreenTouchEnd}
+            aria-hidden="true"
           />
 
           {/* Camera Off / Waiting State for Remote Peer */}
@@ -386,6 +434,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     switchCamera();
+                    resetControlsTimeout();
                   }}
                   type="button"
                   title="Flip camera"
@@ -501,7 +550,10 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
           /* Terminal State Dismissal Button */
           <div className="py-4">
             <button
-              onClick={() => endCall()}
+              onClick={(e) => {
+                e.stopPropagation();
+                endCall();
+              }}
               type="button"
               className="px-6 py-2.5 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-sm text-white font-semibold transition-all cursor-pointer shadow-lg backdrop-blur-md"
             >
@@ -514,7 +566,11 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             {/* 1. Mute Microphone */}
             <div className="flex flex-col items-center gap-1.5">
               <button
-                onClick={toggleMute}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMute();
+                  resetControlsTimeout();
+                }}
                 type="button"
                 title={isMuted ? "Unmute" : "Mute"}
                 aria-label={isMuted ? "Unmute" : "Mute"}
@@ -534,7 +590,11 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             {/* 2. Video / Camera Control */}
             <div className="flex flex-col items-center gap-1.5">
               <button
-                onClick={toggleCamera}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleCamera();
+                  resetControlsTimeout();
+                }}
                 type="button"
                 title={isCameraOff ? "Turn Camera On" : "Turn Camera Off"}
                 aria-label={isCameraOff ? "Turn Camera On" : "Turn Camera Off"}
@@ -557,7 +617,11 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             {isVideo && hasMultipleCameras ? (
               <div className="flex flex-col items-center gap-1.5">
                 <button
-                  onClick={switchCamera}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    switchCamera();
+                    resetControlsTimeout();
+                  }}
                   type="button"
                   title="Switch Camera"
                   aria-label="Switch Camera"
@@ -570,7 +634,11 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             ) : (
               <div className="flex flex-col items-center gap-1.5">
                 <button
-                  onClick={toggleSpeaker}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSpeaker();
+                    resetControlsTimeout();
+                  }}
                   type="button"
                   title={isSpeakerOn ? "Turn Speaker Off" : "Turn Speaker On"}
                   aria-label={isSpeakerOn ? "Turn Speaker Off" : "Turn Speaker On"}
@@ -590,7 +658,11 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             {isVideo && hasMultipleCameras ? (
               <div className="flex flex-col items-center gap-1.5">
                 <button
-                  onClick={toggleSpeaker}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSpeaker();
+                    resetControlsTimeout();
+                  }}
                   type="button"
                   title="Speaker"
                   className={`w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
@@ -610,7 +682,10 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             {/* Prominent Red End Call Button (Center of Row 2) */}
             <div className="flex flex-col items-center gap-1.5">
               <button
-                onClick={() => endCall()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  endCall();
+                }}
                 type="button"
                 title="End Call"
                 aria-label="End Call"
@@ -642,14 +717,20 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             </p>
             <div className="w-full flex items-center justify-center gap-3">
               <button
-                onClick={() => respondVideoSwitch(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  respondVideoSwitch(false);
+                }}
                 type="button"
                 className="flex-1 py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 text-xs sm:text-sm font-semibold text-slate-300 transition-all cursor-pointer"
               >
                 Decline
               </button>
               <button
-                onClick={() => respondVideoSwitch(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  respondVideoSwitch(true);
+                }}
                 type="button"
                 className="flex-1 py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs sm:text-sm font-semibold text-white transition-all shadow-lg shadow-emerald-500/30 cursor-pointer"
               >
