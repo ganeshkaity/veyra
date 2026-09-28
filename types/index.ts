@@ -33,8 +33,18 @@ export interface UserProfile {
   conversationListMemberships?: Record<string, string[]>;
 }
 
-export type MessageType = 'text' | 'image' | 'gif' | 'sticker' | 'system';
+export type MessageType = 'text' | 'image' | 'gif' | 'sticker' | 'system' | 'call';
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
+
+export interface CallMessageInfo {
+  callType: 'voice' | 'video';
+  status: 'ended' | 'missed' | 'declined';
+  duration?: number;
+  formattedDuration?: string;
+  subtitle?: string;
+  callerId?: string;
+  receiverId?: string;
+}
 
 export interface MessageReplyInfo {
   messageId: string;
@@ -64,6 +74,7 @@ export interface ChatMessage {
   mediaUrls?: string[];
   mediaQuality?: 'sd' | 'hd';
   mediaMetadata?: MediaMetadata;
+  callInfo?: CallMessageInfo;
   replyTo?: MessageReplyInfo;
   status: MessageDeliveryStatus;
   isEdited?: boolean;

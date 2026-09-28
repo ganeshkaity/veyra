@@ -220,7 +220,10 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   const handleSendCallLink = () => {
     setShowMenu(false);
     try {
-      const callUrl = `${window.location.origin}/call/${conversation.id}`;
+      const callerId = currentUser.uid;
+      const callerName = encodeURIComponent(currentUser.displayName || "User");
+      const callerAvatar = encodeURIComponent(currentUser.avatarUrl || "");
+      const callUrl = `${window.location.origin}/call/${conversation.id}?caller=${callerId}&name=${callerName}&avatar=${callerAvatar}&type=video`;
       navigator.clipboard.writeText(callUrl);
       showToast("Call link copied to clipboard! 🔗");
     } catch {
@@ -379,17 +382,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
           </>
         )}
 
-
-        <button
-          onClick={onOpenSearch}
-          title="Search in chat"
-          aria-label="Search in chat"
-          className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        >
-          <Icon name="search" size="md" />
-        </button>
-
-        {/* 3-dot Menu Button replacing Info button */}
+        {/* 3-dot Menu Button */}
         <button
           onClick={() => setShowMenu((prev) => !prev)}
           title="More options"
@@ -435,7 +428,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
               >
                 <Icon name="search" size="sm" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white" />
                 <span className="font-medium text-[14px] text-slate-800 dark:text-[#E9EDEF]">
-                  Search
+                  Search Chat
                 </span>
               </button>
 
@@ -569,7 +562,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
                   >
                     <Icon name="link" size="sm" className="text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white" />
                     <span className="font-medium text-[14px] text-slate-800 dark:text-[#E9EDEF]">
-                      Send call link
+                      Copy call link
                     </span>
                   </button>
                 </>

@@ -402,6 +402,7 @@ export async function sendMessage(
     replyTo?: ChatMessage["replyTo"];
     forwarded?: boolean;
     reactions?: ChatMessage["reactions"];
+    callInfo?: ChatMessage["callInfo"];
   }
 ): Promise<string> {
   const messagesRef = collection(db, "conversations", conversationId, "messages");
@@ -443,6 +444,8 @@ export async function sendMessage(
         ? "👾 GIF"
         : message.type === "sticker"
         ? `${message.text} Sticker`
+        : message.type === "call"
+        ? `${message.callInfo?.callType === "video" ? "📹 Video call" : "📞 Voice call"} • ${message.callInfo?.subtitle || "No answer"}`
         : stripMarkdown(message.text);
 
     if (convSnap.exists()) {

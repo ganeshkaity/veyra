@@ -27,7 +27,14 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
 
   const isInChat = useIsInChatConversation();
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const pendingBackRef = useRef(false);
+
+  useEffect(() => {
+    if (!incomingCall) {
+      setIsMobileExpanded(false);
+    }
+  }, [incomingCall]);
 
   const isCallActive =
     callState === "calling" ||
@@ -89,13 +96,14 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
 
   return (
     <>
-      {/* 1. Incoming Call Prompt: Banner when in chat (Image 2) or Fullscreen when outside chat (Image 1) */}
+      {/* 1. Incoming Call Prompt: Banner when in chat (Image 2) or Fullscreen when outside chat or expanded on mobile (Image 1) */}
       {hasIncomingPrompt && incomingCall && (
-        isInChat ? (
+        isInChat && !isMobileExpanded ? (
           <IncomingCallBanner
             notification={incomingCall}
             onAccept={acceptCall}
             onDecline={declineCall}
+            onExpand={() => setIsMobileExpanded(true)}
           />
         ) : (
           <IncomingCallFullScreen

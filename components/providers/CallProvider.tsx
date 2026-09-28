@@ -346,29 +346,40 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         callSounds.playEndCallTone();
       }
 
-      // Record system call message in chat history if caller
+      // Record call message in chat history as a conversation bubble (matching Image 2)
       if (activeCall?.conversationId && user) {
         try {
-          let systemText = "";
           const typeLabel = isVideo ? "Video call" : "Voice call";
+          let callStatus: "ended" | "missed" | "declined" = "ended";
+          let subtitle = "";
+
           if (terminalState === "ended") {
-            systemText =
-              finalDuration > 0
-                ? ` ${typeLabel} ended • ${formatted}`
-                : ` ${typeLabel} ended`;
+            callStatus = "ended";
+            subtitle = finalDuration > 0 ? formatted : "Call ended";
           } else if (terminalState === "missed") {
-            systemText = ` Missed ${typeLabel.toLowerCase()}`;
-          } else if (terminalState === "declined") {
-            systemText = ` ${typeLabel} declined`;
+            callStatus = "missed";
+            subtitle = "No answer";
+          } else if (terminalState === "declined" || terminalState === "busy") {
+            callStatus = "declined";
+            subtitle = "No answer";
           }
 
-          if (systemText && currentRoleRef.current === "caller") {
+          if (currentRoleRef.current === "caller" && activeCall.callerId) {
             await sendMessage(activeCall.conversationId, {
               conversationId: activeCall.conversationId,
-              senderId: "system",
-              senderName: "Veyra System",
-              text: systemText,
-              type: "system",
+              senderId: activeCall.callerId,
+              senderName: activeCall.callerName || profile?.displayName || "You",
+              text: `${typeLabel} • ${subtitle}`,
+              type: "call",
+              callInfo: {
+                callType: isVideo ? "video" : "voice",
+                status: callStatus,
+                duration: finalDuration,
+                formattedDuration: formatted,
+                subtitle,
+                callerId: activeCall.callerId,
+                receiverId: activeCall.receiverId,
+              },
             });
           }
         } catch (_) {}
@@ -555,6 +566,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCallType(notification.callType || "voice");
       setIncomingCall(notification);
       callSounds.startIncomingRingtone();
+
+      // Immediately signal caller that receiver device received call and is actively ringing
+      updateCallStatus(notification.callId, "ringing").catch((err) => {
+        webrtcLogger.warn("Failed to mark call as ringing:", err);
+      });
 
       // Cancel previous call subscription if any
       if (incomingCallUnsubRef.current) {
@@ -1129,10 +1145,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const activeCall = currentCallRef.current;
+    const wasUnanswered = callStateRef.current === "calling" || callStateRef.current === "ringing";
+    const terminalState = wasUnanswered ? "missed" : "ended";
+    const endReason = wasUnanswered ? "No answer" : "Call ended";
     if (activeCall?.callId) {
-      await updateCallStatus(activeCall.callId, "ended", { endedAt: Date.now() });
+      await updateCallStatus(activeCall.callId, terminalState, { endedAt: Date.now() });
     }
-    await terminateCallInternal("ended", "Call ended");
+    await terminateCallInternal(terminalState, endReason);
   };
 
   /**

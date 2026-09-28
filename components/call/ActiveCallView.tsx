@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCall } from "@/components/providers/CallProvider";
@@ -153,26 +153,128 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     callState === "busy" ||
     callState === "failed";
 
-  // Cycle PiP position on click/tap
-  const cyclePipPosition = () => {
-    setPipPosition((prev) => {
-      if (prev === "bottom-right") return "top-right";
-      if (prev === "top-right") return "bottom-left";
-      return "bottom-right";
-    });
+  const [pipCoords, setPipCoords] = useState<{ x: number; y: number } | null>(null);
+  const pipRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    initialX: number;
+    initialY: number;
+    hasMoved: boolean;
+  }>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    initialX: 16,
+    initialY: 88,
+    hasMoved: false,
+  });
+
+  // Controls auto-hide state and timer for video calls
+  const [areControlsVisible, setAreControlsVisible] = useState(true);
+  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetControlsTimeout = () => {
+    setAreControlsVisible(true);
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+      hideControlsTimerRef.current = null;
+    }
+    if (isVideo && !isTerminalState) {
+      hideControlsTimerRef.current = setTimeout(() => {
+        setAreControlsVisible(false);
+      }, 3500);
+    }
   };
 
-  const pipPositionClasses = {
-    "bottom-right": "bottom-24 sm:bottom-28 right-4",
-    "top-right": "top-20 sm:top-24 right-4",
-    "bottom-left": "bottom-24 sm:bottom-28 left-4",
-  }[pipPosition];
+  useEffect(() => {
+    resetControlsTimeout();
+    return () => {
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    };
+  }, [isVideo, isConnected, isTerminalState]);
+
+  // Initialize PiP position to top-left on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && !pipCoords) {
+      setPipCoords({ x: 16, y: 88 });
+    }
+  }, [pipCoords]);
+
+  const handleContainerClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest(".pip-preview-box")) {
+      resetControlsTimeout();
+      return;
+    }
+    if (isVideo && !isTerminalState) {
+      setAreControlsVisible((prev) => {
+        const next = !prev;
+        if (next) resetControlsTimeout();
+        return next;
+      });
+    }
+  };
+
+  const handlePipPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    const currentX = pipCoords?.x ?? 16;
+    const currentY = pipCoords?.y ?? 88;
+    dragRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: currentX,
+      initialY: currentY,
+      hasMoved: false,
+    };
+    try {
+      (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+    resetControlsTimeout();
+  };
+
+  const handlePipPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.isDragging) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragRef.current.hasMoved = true;
+    }
+
+    const pipWidth = pipRef.current?.offsetWidth || 120;
+    const pipHeight = pipRef.current?.offsetHeight || 160;
+
+    const minX = 8;
+    const maxX = Math.max(minX, window.innerWidth - pipWidth - 8);
+    const minY = 8;
+    const maxY = Math.max(minY, window.innerHeight - pipHeight - 8);
+
+    const nextX = Math.max(minX, Math.min(dragRef.current.initialX + dx, maxX));
+    const nextY = Math.max(minY, Math.min(dragRef.current.initialY + dy, maxY));
+
+    setPipCoords({ x: nextX, y: nextY });
+  };
+
+  const handlePipPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.isDragging) return;
+    dragRef.current.isDragging = false;
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    resetControlsTimeout();
+  };
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="active-call-title"
+      onMouseMove={resetControlsTimeout}
+      onClick={handleContainerClick}
       className="fixed inset-0 z-[110] flex flex-col justify-between bg-[#0e1017] text-white select-none overflow-hidden animate-in fade-in duration-300"
     >
       {/* ========================================================= */}
@@ -231,12 +333,20 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             </div>
           )}
 
-          {/* Floating Local Camera PiP Preview (Floating Window) */}
+          {/* Floating Local Camera PiP Preview (Draggable, default top-left) */}
           {(callState === "connecting" || callState === "connected" || callState === "calling") && (
             <div
-              onClick={cyclePipPosition}
-              title="Tap to move preview"
-              className={`absolute z-20 w-28 h-40 sm:w-36 sm:h-48 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/30 bg-slate-900/90 backdrop-blur-md transition-all duration-300 cursor-pointer group ${pipPositionClasses}`}
+              ref={pipRef}
+              onPointerDown={handlePipPointerDown}
+              onPointerMove={handlePipPointerMove}
+              onPointerUp={handlePipPointerUp}
+              onPointerCancel={handlePipPointerUp}
+              title="Drag to move preview"
+              className="pip-preview-box absolute z-30 w-28 h-40 sm:w-36 sm:h-48 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/30 bg-slate-900/90 backdrop-blur-md cursor-grab active:cursor-grabbing group touch-none select-none transition-shadow"
+              style={{
+                left: pipCoords ? `${pipCoords.x}px` : "16px",
+                top: pipCoords ? `${pipCoords.y}px` : "88px",
+              }}
             >
               <video
                 ref={(el) => {
@@ -252,13 +362,13 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
                 playsInline
                 webkit-playsinline="true"
                 muted
-                className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
-                  hasLocalVideo ? "opacity-100" : "opacity-0 pointer-events-none"
+                className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-300 pointer-events-none ${
+                  hasLocalVideo ? "opacity-100" : "opacity-0"
                 }`}
               />
 
               {!hasLocalVideo && (
-                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-800 select-none">
+                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-800 select-none pointer-events-none">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/20 mb-1.5 shadow-inner bg-slate-700 flex items-center justify-center">
                     {myAvatar ? (
                       <Image src={myAvatar} alt="You" fill sizes="48px" className="object-cover" />
@@ -347,8 +457,12 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
       {/* TOP HEADER: Contact Name, Duration, Network (Matching Image 3) */}
       {/* ========================================================= */}
       <div
-        className={`w-full flex flex-col items-center text-center z-20 px-6 ${
+        className={`w-full flex flex-col items-center text-center z-20 px-6 transition-all duration-300 ease-in-out ${
           isVideo ? "bg-gradient-to-b from-black/80 via-black/50 to-transparent pb-8" : ""
+        } ${
+          isVideo && !areControlsVisible
+            ? "opacity-0 -translate-y-4 pointer-events-none"
+            : "opacity-100 translate-y-0 pointer-events-auto"
         }`}
         style={{ paddingTop: "max(24px, env(safe-area-inset-top, 24px))" }}
       >
@@ -374,8 +488,12 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
       {/* BOTTOM CONTROLS GRID (Matching Visual Reference Image 3) */}
       {/* ========================================================= */}
       <div
-        className={`w-full flex flex-col items-center justify-center z-20 px-6 ${
+        className={`w-full flex flex-col items-center justify-center z-20 px-6 transition-all duration-300 ease-in-out ${
           isVideo ? "bg-gradient-to-t from-black/90 via-black/70 to-transparent pt-8" : ""
+        } ${
+          isVideo && !areControlsVisible
+            ? "opacity-0 translate-y-4 pointer-events-none"
+            : "opacity-100 translate-y-0 pointer-events-auto"
         }`}
         style={{ paddingBottom: "max(32px, env(safe-area-inset-bottom, 32px))" }}
       >

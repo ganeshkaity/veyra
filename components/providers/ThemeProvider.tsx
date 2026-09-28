@@ -25,8 +25,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const stored = localStorage.getItem("veyra_theme") as Theme | null;
       if (stored === "dark" || stored === "light") {
         setThemeState(stored);
-      } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        setThemeState("dark");
+      } else {
+        // First-time visit: always default to light mode
+        setThemeState("light");
       }
     } catch {
       // ignore localStorage errors

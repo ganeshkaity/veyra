@@ -9,12 +9,14 @@ interface IncomingCallBannerProps {
   notification: IncomingCallNotification;
   onAccept: () => void;
   onDecline: () => void;
+  onExpand?: () => void;
 }
 
 export const IncomingCallBanner: React.FC<IncomingCallBannerProps> = ({
   notification,
   onAccept,
   onDecline,
+  onExpand,
 }) => {
   const isVideo = notification.callType === "video";
   const callerName = notification.callerName || "Unknown Caller";
@@ -36,7 +38,16 @@ export const IncomingCallBanner: React.FC<IncomingCallBannerProps> = ({
       className="fixed inset-x-3 sm:inset-x-auto sm:right-6 sm:w-[410px] z-[120] animate-in slide-in-from-top-4 duration-300 ease-out select-none"
       style={{ top: "max(12px, env(safe-area-inset-top, 12px))" }}
     >
-      <div className="w-full bg-[#181C24]/95 border border-white/15 rounded-3xl p-3.5 shadow-2xl shadow-black/80 backdrop-blur-2xl flex items-center justify-between gap-3">
+      <div
+        onClick={(e) => {
+          // If clicked outside action buttons, open fullscreen on mobile
+          if ((e.target as HTMLElement).closest("button")) return;
+          if (typeof window !== "undefined" && window.innerWidth < 768) {
+            onExpand?.();
+          }
+        }}
+        className="w-full bg-[#181C24]/95 border border-white/15 rounded-3xl p-3.5 shadow-2xl shadow-black/80 backdrop-blur-2xl flex items-center justify-between gap-3 cursor-pointer sm:cursor-default"
+      >
         {/* Left: Avatar with pulsing green ring */}
         <div className="relative flex-shrink-0">
           <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 bg-gradient-to-tr from-slate-800 to-slate-700 flex items-center justify-center text-white text-base font-bold shadow-md">

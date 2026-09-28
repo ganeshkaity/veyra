@@ -227,7 +227,7 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
       {/* Top Header */}
       <div className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          Status
+          Updates
         </h1>
         <button
           onClick={() => setIsPrivacyModalOpen(true)}

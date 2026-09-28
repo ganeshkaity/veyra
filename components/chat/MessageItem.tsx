@@ -12,6 +12,8 @@ import { WhatsAppForwardIcon } from "./WhatsAppForwardIcon";
 import { MessageStatusTick } from "./MessageStatusTick";
 import { toggleStarMessage, toggleMessageReaction } from "@/lib/firestore/conversationService";
 import { ReactionDetailsModal } from "./ReactionDetailsModal";
+import { CallMessageBubble } from "./CallMessageBubble";
+import { useCall } from "@/components/providers/CallProvider";
 
 // Global trackers across all message items to avoid reopening loops upon backdrop tap/click dismissals
 let globalMenuClosedAt = 0;
@@ -56,6 +58,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onDeleteForMe,
   onOpenImageViewer,
 }) => {
+  const { startCall } = useCall();
   const [showMenu, setShowMenu] = useState(false);
   const [menuCoords, setMenuCoords] = useState<{
     top?: number;
@@ -733,8 +736,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               transform: `translateX(${swipeOffset}px)`,
               transition: swipeOffset === 0 ? "transform 0.22s cubic-bezier(0.18, 0.89, 0.32, 1.28)" : "none",
             }}
-            className={`relative max-w-[88%] sm:max-w-[78%] md:max-w-[72%] min-w-0 select-text cursor-pointer ${message.type === "sticker"
-                ? "bg-transparent shadow-none p-1"
+            className={`relative max-w-[88%] sm:max-w-[78%] md:max-w-[72%] min-w-0 select-text cursor-pointer ${
+                message.type === "sticker" || message.type === "call"
+                ? "bg-transparent shadow-none p-0"
                 : isMediaWithoutCaption
                   ? `${getBubbleRadius()} p-1 shadow-sm ${isMe
                     ? "bg-[var(--bubble-outgoing)] text-[var(--bubble-outgoing-text)]"
@@ -776,6 +780,27 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               </div>
             )}
 
+            {/* Call Message Content (WhatsApp Style matching Image 2) */}
+            {message.type === "call" && (
+              <CallMessageBubble
+                message={message}
+                isMe={isMe}
+                formatTime={formatTime}
+                onCallBack={(isVideo) => {
+                  if (message.conversationId) {
+                    startCall(
+                      {
+                        uid: isMe ? (message.callInfo?.receiverId || "") : message.senderId,
+                        displayName: message.senderName || "User",
+                        conversationId: message.conversationId,
+                      },
+                      isVideo ? "video" : "voice"
+                    ).catch(() => {});
+                  }
+                }}
+              />
+            )}
+
             {/* Image Content with Lightbox */}
             {message.type === "image" && message.mediaUrl && (
               <ImageMessage
@@ -806,13 +831,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               </div>
             )}
 
-            {/* Regular Text Content (for non-media) */}
-            {message.type !== "sticker" && !isImageOrGif && (
+            {/* Regular Text Content (for non-media and non-call) */}
+            {message.type !== "sticker" && !isImageOrGif && message.type !== "call" && (
               <ChatMessageMarkdown content={message.text} isMe={isMe} />
             )}
 
-            {/* Footer: Only shown when there IS a caption or for regular messages */}
-            {!isMediaWithoutCaption && (
+            {/* Footer: Only shown when there IS a caption or for regular messages (not call or sticker) */}
+            {!isMediaWithoutCaption && message.type !== "call" && message.type !== "sticker" && (
               <div
                 className={`flex items-center gap-1 justify-end text-[10px] mt-1 select-none ${isMe ? "text-slate-500 dark:text-slate-300" : "text-slate-400"
                   }`}
