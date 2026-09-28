@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCall } from "@/components/providers/CallProvider";
@@ -41,6 +41,40 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
 
   const isVideo = callType === "video";
   const isConnected = callState === "connected";
+
+  const hasRemoteVideo = Boolean(
+    remoteStream &&
+    remoteStream.getVideoTracks().length > 0 &&
+    !isRemoteCameraOff
+  );
+
+  const hasLocalVideo = Boolean(
+    localStream &&
+    localStream.getVideoTracks().length > 0 &&
+    !isCameraOff
+  );
+
+  // Synchronize localStream to localVideoRef when stream arrives or element updates
+  useEffect(() => {
+    const videoEl = localVideoRef?.current;
+    if (videoEl && localStream) {
+      if (videoEl.srcObject !== localStream) {
+        videoEl.srcObject = localStream;
+      }
+      videoEl.play().catch(() => {});
+    }
+  }, [localStream, localVideoRef, isCameraOff, hasLocalVideo]);
+
+  // Synchronize remoteStream to remoteVideoRef when stream arrives or element updates
+  useEffect(() => {
+    const videoEl = remoteVideoRef?.current;
+    if (videoEl && remoteStream) {
+      if (videoEl.srcObject !== remoteStream) {
+        videoEl.srcObject = remoteStream;
+      }
+      videoEl.play().catch(() => {});
+    }
+  }, [remoteStream, remoteVideoRef, isConnected, isRemoteCameraOff, hasRemoteVideo]);
 
   // Accurately determine who the remote party is (caller vs receiver)
   const isCaller = currentCall?.callerId === user?.uid;
@@ -146,18 +180,28 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
       {/* ========================================================= */}
       {isVideo && (
         <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
-          {/* Main View: Remote Peer's Camera Video or Avatar Placeholder */}
-          {isConnected && remoteStream && !isRemoteCameraOff ? (
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              webkit-playsinline="true"
-              className="w-full h-full object-cover sm:object-contain bg-black"
-            />
-          ) : (
-            /* Camera Off / Waiting State for Remote Peer */
-            <div className="flex flex-col items-center justify-center text-center p-6 z-10">
+          {/* Main View: Remote Peer's Camera Video */}
+          <video
+            ref={(el) => {
+              if (remoteVideoRef) {
+                (remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+              }
+              if (el && remoteStream && el.srcObject !== remoteStream) {
+                el.srcObject = remoteStream;
+                el.play().catch(() => {});
+              }
+            }}
+            autoPlay
+            playsInline
+            webkit-playsinline="true"
+            className={`w-full h-full object-cover sm:object-contain bg-black transition-opacity duration-300 ${
+              hasRemoteVideo && (isConnected || callState === "connecting") ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          />
+
+          {/* Camera Off / Waiting State for Remote Peer */}
+          {(!hasRemoteVideo || (!isConnected && callState !== "connecting")) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 z-10 pointer-events-none">
               <div className="relative w-32 h-32 sm:w-40 sm:h-40 rounded-full overflow-hidden border-2 border-white/20 shadow-2xl bg-gradient-to-tr from-slate-800 to-slate-700 flex items-center justify-center text-white text-3xl font-bold mb-4">
                 {resolvedAvatar ? (
                   <Image
@@ -194,17 +238,27 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
               title="Tap to move preview"
               className={`absolute z-20 w-28 h-40 sm:w-36 sm:h-48 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/30 bg-slate-900/90 backdrop-blur-md transition-all duration-300 cursor-pointer group ${pipPositionClasses}`}
             >
-              {!isCameraOff && localStream ? (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  webkit-playsinline="true"
-                  muted
-                  className="w-full h-full object-cover -scale-x-100"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-800 select-none">
+              <video
+                ref={(el) => {
+                  if (localVideoRef) {
+                    (localVideoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                  }
+                  if (el && localStream && el.srcObject !== localStream) {
+                    el.srcObject = localStream;
+                    el.play().catch(() => {});
+                  }
+                }}
+                autoPlay
+                playsInline
+                webkit-playsinline="true"
+                muted
+                className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
+                  hasLocalVideo ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              />
+
+              {!hasLocalVideo && (
+                <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-800 select-none">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/20 mb-1.5 shadow-inner bg-slate-700 flex items-center justify-center">
                     {myAvatar ? (
                       <Image src={myAvatar} alt="You" fill sizes="48px" className="object-cover" />
@@ -216,9 +270,8 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
                 </div>
               )}
 
-
               {/* Mobile Camera Flip Button on PiP */}
-              {hasMultipleCameras && !isCameraOff && (
+              {hasMultipleCameras && hasLocalVideo && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -227,7 +280,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
                   type="button"
                   title="Flip camera"
                   aria-label="Flip camera"
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm transition-transform active:scale-90"
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm transition-transform active:scale-90 z-10"
                 >
                   <Icon name="flip_camera_android" size="xs" />
                 </button>

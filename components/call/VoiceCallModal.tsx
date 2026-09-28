@@ -73,8 +73,15 @@ export const VoiceCallModal: React.FC<VoiceCallModalProps> = ({
   };
 
   // Determine what to display
-  const hasIncomingPrompt = Boolean(incomingCall && callState === "idle");
-  const hasActiveSession = callState !== "idle";
+  const hasIncomingPrompt = Boolean(
+    incomingCall &&
+    callState !== "connected" &&
+    callState !== "connecting"
+  );
+  const hasActiveSession =
+    callState === "connecting" ||
+    callState === "connected" ||
+    (callState !== "idle" && !incomingCall);
 
   if (!hasIncomingPrompt && !hasActiveSession) {
     return null;

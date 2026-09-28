@@ -91,6 +91,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Subscriptions & Timers
   const callUnsubRef = useRef<(() => void) | null>(null);
   const candidatesUnsubRef = useRef<(() => void) | null>(null);
+  const incomingCallUnsubRef = useRef<(() => void) | null>(null);
   const disconnectCleanupRef = useRef<(() => void) | null>(null);
   const ringingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const durationTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -177,31 +178,46 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
           video: {
-            facingMode: currentFacingMode,
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 },
+            facingMode: { ideal: currentFacingMode || "user" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
         });
+        setIsCameraOff(false);
         webrtcLogger.log("Camera + Microphone media stream acquired successfully", {
           audioTracks: stream.getAudioTracks().length,
           videoTracks: stream.getVideoTracks().length,
         });
         return stream;
       } catch (err: any) {
-        webrtcLogger.warn("Camera access denied or failed, attempting graceful fallback to audio-only:", err);
-        // Fallback gracefully if camera permission was denied by user or OS
+        webrtcLogger.warn("Primary camera constraints failed (likely PC webcam or OverconstrainedError), attempting basic video: true fallback:", err);
+        // Fallback for PC webcams and USB cameras that fail on facingMode or resolution constraints
         try {
-          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
+          const stream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
-            video: false,
+            video: true,
           });
-          setIsCameraOff(true);
-          webrtcLogger.log("Fallback audio-only stream acquired successfully");
-          return audioOnlyStream;
-        } catch (audioErr: any) {
-          webrtcLogger.error("Microphone fallback also failed:", audioErr);
-          throw audioErr;
+          setIsCameraOff(false);
+          webrtcLogger.log("Basic video fallback acquired successfully", {
+            audioTracks: stream.getAudioTracks().length,
+            videoTracks: stream.getVideoTracks().length,
+          });
+          return stream;
+        } catch (basicErr: any) {
+          webrtcLogger.warn("Camera access denied or no camera hardware found, falling back to audio-only:", basicErr);
+          // Fallback gracefully only if user physically denied camera or has no camera device
+          try {
+            const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
+              audio: audioConstraints,
+              video: false,
+            });
+            setIsCameraOff(true);
+            webrtcLogger.log("Fallback audio-only stream acquired successfully");
+            return audioOnlyStream;
+          } catch (audioErr: any) {
+            webrtcLogger.error("Microphone fallback also failed:", audioErr);
+            throw audioErr;
+          }
         }
       }
     } else {
@@ -285,6 +301,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (candidatesUnsubRef.current) {
       candidatesUnsubRef.current();
       candidatesUnsubRef.current = null;
+    }
+    if (incomingCallUnsubRef.current) {
+      incomingCallUnsubRef.current();
+      incomingCallUnsubRef.current = null;
     }
     if (disconnectCleanupRef.current) {
       disconnectCleanupRef.current();
@@ -489,7 +509,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsub = listenForIncomingCall(user.uid, (notification) => {
       if (!notification) {
-        if (incomingCallRef.current && callStateRef.current === "idle") {
+        webrtcLogger.log("Incoming call notification cleared or not present");
+        if (incomingCallUnsubRef.current) {
+          incomingCallUnsubRef.current();
+          incomingCallUnsubRef.current = null;
+        }
+        if (incomingCallRef.current && (callStateRef.current === "idle" || callStateRef.current === "ringing")) {
           callSounds.stopAllSounds();
           setIncomingCall(null);
         }
@@ -531,10 +556,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIncomingCall(notification);
       callSounds.startIncomingRingtone();
 
-      const unsubCall = subscribeToCall(notification.callId, (callData) => {
+      // Cancel previous call subscription if any
+      if (incomingCallUnsubRef.current) {
+        incomingCallUnsubRef.current();
+        incomingCallUnsubRef.current = null;
+      }
+
+      incomingCallUnsubRef.current = subscribeToCall(notification.callId, (callData) => {
         if (!callData) {
-          callSounds.stopAllSounds();
-          setIncomingCall(null);
+          // RTDB may take a brief moment to replicate calls/ after users/incomingCall is written.
+          // Do NOT prematurely cancel incoming call prompt while notification is still active.
           return;
         }
 
@@ -543,19 +574,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           callData.status === "declined" ||
           callData.status === "missed"
         ) {
+          webrtcLogger.log(`Incoming call status changed to ${callData.status}, clearing prompt`);
           callSounds.stopAllSounds();
           setIncomingCall(null);
-          unsubCall();
+          if (incomingCallUnsubRef.current) {
+            incomingCallUnsubRef.current();
+            incomingCallUnsubRef.current = null;
+          }
         }
       });
-
-      return () => {
-        unsubCall();
-      };
     });
 
     return () => {
       unsub();
+      if (incomingCallUnsubRef.current) {
+        incomingCallUnsubRef.current();
+        incomingCallUnsubRef.current = null;
+      }
       callSounds.stopAllSounds();
     };
   }, [user?.uid, cleanupMediaAndPeer]);
@@ -656,16 +691,22 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Remote track handler (Audio & Video)
     pc.ontrack = (event) => {
       webrtcLogger.log(`Received remote track: ${event.track.kind} (${event.track.id})`);
-      const incomingStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-      remoteStreamRef.current = incomingStream;
-      setRemoteStream(incomingStream);
+      let stream = remoteStreamRef.current;
+      if (!stream) {
+        stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream();
+        remoteStreamRef.current = stream;
+      }
+      if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
+      setRemoteStream(stream);
 
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = incomingStream;
+      if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== stream) {
+        remoteAudioRef.current.srcObject = stream;
         remoteAudioRef.current.play().catch(() => {});
       }
-      if (remoteVideoRef.current && event.track.kind === "video") {
-        remoteVideoRef.current.srcObject = incomingStream;
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== stream) {
+        remoteVideoRef.current.srcObject = stream;
         remoteVideoRef.current.play().catch(() => {});
       }
     };
@@ -835,6 +876,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     primeMediaPlayback();
     callSounds.stopAllSounds();
 
+    if (incomingCallUnsubRef.current) {
+      incomingCallUnsubRef.current();
+      incomingCallUnsubRef.current = null;
+    }
+
     const callId = incomingCall.callId;
     const acceptedType = incomingCall.callType || "voice";
     activeCallIdRef.current = callId;
@@ -897,16 +943,22 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     pc.ontrack = (event) => {
       webrtcLogger.log(`Receiver received remote track: ${event.track.kind} (${event.track.id})`);
-      const incomingStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-      remoteStreamRef.current = incomingStream;
-      setRemoteStream(incomingStream);
+      let stream = remoteStreamRef.current;
+      if (!stream) {
+        stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream();
+        remoteStreamRef.current = stream;
+      }
+      if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
+      setRemoteStream(stream);
 
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = incomingStream;
+      if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== stream) {
+        remoteAudioRef.current.srcObject = stream;
         remoteAudioRef.current.play().catch(() => {});
       }
-      if (remoteVideoRef.current && event.track.kind === "video") {
-        remoteVideoRef.current.srcObject = incomingStream;
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== stream) {
+        remoteVideoRef.current.srcObject = stream;
         remoteVideoRef.current.play().catch(() => {});
       }
     };
@@ -1033,6 +1085,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     callSounds.stopAllSounds();
     callSounds.playEndCallTone();
 
+    if (incomingCallUnsubRef.current) {
+      incomingCallUnsubRef.current();
+      incomingCallUnsubRef.current = null;
+    }
+
     if (incomingCall && user) {
       const callId = incomingCall.callId;
       await updateCallStatus(callId, "declined");
@@ -1099,14 +1156,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const upgradeToVideoMedia = async (): Promise<void> => {
     try {
       webrtcLogger.log("Upgrading ongoing audio call to video call...");
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-      });
+      let videoStream: MediaStream;
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: currentFacingMode || "user" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+      } catch (_) {
+        videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       const videoTrack = videoStream.getVideoTracks()[0];
       if (videoTrack) {
         if (localStreamRef.current) {
@@ -1199,9 +1260,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Camera was disabled/never acquired, re-acquire new camera track
       try {
         webrtcLogger.log("Re-acquiring camera track...");
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: currentFacingMode },
-        });
+        let newStream: MediaStream;
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: currentFacingMode || "user" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          });
+        } catch (_) {
+          newStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (newVideoTrack) {
           currentStream.addTrack(newVideoTrack);

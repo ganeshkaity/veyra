@@ -9,6 +9,7 @@ class SoundEffectsManager {
   private dialInterval: NodeJS.Timeout | null = null;
   private incomingAudio: HTMLAudioElement | null = null;
   private gestureCleanup: (() => void) | null = null;
+  private isPlayingIncoming: boolean = false;
 
   private getAudioContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -37,6 +38,7 @@ class SoundEffectsManager {
    */
   public startIncomingRingtone(): void {
     this.stopAllSounds();
+    this.isPlayingIncoming = true;
 
     if (typeof window !== "undefined") {
       try {
@@ -50,17 +52,33 @@ class SoundEffectsManager {
         if (playPromise !== undefined) {
           playPromise
             .then(() => {
-              // Custom MPEG ringtone playing successfully
+              if (!this.isPlayingIncoming) {
+                try {
+                  audio.pause();
+                  audio.currentTime = 0;
+                } catch (_) {}
+              }
             })
             .catch((err) => {
+              if (!this.isPlayingIncoming) return;
               console.warn("MPEG ringtone autoplay blocked by browser, waiting for user gesture:", err);
               // Fallback to synthesized ring while waiting for user interaction
               this.playSyntheticRingLoop();
 
               // As soon as user touches or clicks anywhere, start the custom MPEG ringtone
               const onUserGesture = () => {
+                if (!this.isPlayingIncoming) {
+                  this.removeGestureListener();
+                  return;
+                }
                 if (this.incomingAudio) {
                   this.incomingAudio.play().then(() => {
+                    if (!this.isPlayingIncoming) {
+                      try {
+                        this.incomingAudio?.pause();
+                      } catch (_) {}
+                      return;
+                    }
                     // Custom MPEG ringtone started, cancel synthetic fallback
                     if (this.ringInterval) {
                       clearInterval(this.ringInterval);
@@ -89,7 +107,9 @@ class SoundEffectsManager {
     }
 
     // Fallback to Web Audio API synthesized ringing if audio element fails
-    this.playSyntheticRingLoop();
+    if (this.isPlayingIncoming) {
+      this.playSyntheticRingLoop();
+    }
   }
 
   /**
@@ -241,6 +261,7 @@ class SoundEffectsManager {
    * Stops all running sound loops (ringtone, dial tone)
    */
   public stopAllSounds(): void {
+    this.isPlayingIncoming = false;
     this.removeGestureListener();
     if (this.incomingAudio) {
       try {

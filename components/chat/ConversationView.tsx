@@ -495,7 +495,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   };
 
   // Helper to reliably scroll the messages container to the bottom
-  const scrollToBottom = useCallback((instant = true) => {
+  const scrollToBottom = React.useCallback((instant = true) => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
