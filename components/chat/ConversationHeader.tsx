@@ -141,16 +141,48 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
     }
 
     try {
-      await startCall({
-        uid: otherId,
-        displayName: name,
-        avatarUrl: avatarUrl,
-        conversationId: conversation.id,
-      });
+      await startCall(
+        {
+          uid: otherId,
+          displayName: name,
+          avatarUrl: avatarUrl,
+          conversationId: conversation.id,
+        },
+        "voice"
+      );
     } catch (err: any) {
       showToast(err.message || "Failed to initiate call.");
     }
   };
+
+  // Handle 1-to-1 Video Call action
+  const handleVideoCallClick = async () => {
+    if (isGroup) {
+      showToast("Video calling is currently supported in 1-to-1 direct chats.");
+      return;
+    }
+
+    const otherId = conversation.participantIds.find((id) => id !== currentUser.uid);
+    if (!otherId) {
+      showToast("Unable to start call: recipient not found.");
+      return;
+    }
+
+    try {
+      await startCall(
+        {
+          uid: otherId,
+          displayName: name,
+          avatarUrl: avatarUrl,
+          conversationId: conversation.id,
+        },
+        "video"
+      );
+    } catch (err: any) {
+      showToast(err.message || "Failed to initiate video call.");
+    }
+  };
+
 
   // Action handlers
   const handleExportChat = () => {
@@ -327,15 +359,26 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
       {/* Right: Actions */}
       <div className="relative flex items-center gap-1">
         {!isAi && (
-          <button
-            onClick={handleVoiceCallClick}
-            title={isGroup ? "Voice Call (Direct Chats)" : "Voice Call"}
-            aria-label="Voice Call"
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <Icon name="call" size="md" />
-          </button>
+          <>
+            <button
+              onClick={handleVideoCallClick}
+              title={isGroup ? "Video Call (Direct Chats)" : "Video Call"}
+              aria-label="Video Call"
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <Icon name="videocam" size="md" />
+            </button>
+            <button
+              onClick={handleVoiceCallClick}
+              title={isGroup ? "Voice Call (Direct Chats)" : "Voice Call"}
+              aria-label="Voice Call"
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <Icon name="call" size="md" />
+            </button>
+          </>
         )}
+
 
         <button
           onClick={onOpenSearch}

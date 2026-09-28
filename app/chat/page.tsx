@@ -307,12 +307,12 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
     <div className="absolute inset-0 rounded-3xl bg-blue-500/20 blur-2xl animate-pulse" />
 
     {/* Logo container */}
-    <div className="relative w-24 h-24 flex items-center justify-center rounded-3xl animate-[float_2.8s_ease-in-out_infinite]">
+    <div className="relative w-30 h-30 flex items-center justify-center rounded-3xl animate-[float_2.8s_ease-in-out_infinite]">
       <Image
         src="/assets/favicon.png"
         alt="Veyra"
-        width={88}
-        height={88}
+        width={110}
+        height={110}
         className="object-contain drop-shadow-xl"
         priority
       />
@@ -325,10 +325,6 @@ export default function ChatPage({ initialArchive = false }: ChatPageProps) {
     <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-[dot_1.4s_ease-in-out_0.2s_infinite]" />
     <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-[dot_1.4s_ease-in-out_0.4s_infinite]" />
   </div>
-
-  <p className="text-xs text-slate-400/80 font-medium tracking-wide">
-    Opening Veyra
-  </p>
 
   <style jsx>{`
     @keyframes float {

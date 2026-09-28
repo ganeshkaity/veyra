@@ -12,18 +12,42 @@ import {
   Unsubscribe,
 } from "firebase/database";
 import { rtdb } from "../firebase/client";
-import { CallData, CallState, IncomingCallNotification, SdpPayload } from "@/types/call";
+import { CallData, CallState, IncomingCallNotification, SdpPayload, CallRole } from "@/types/call";
+
+/**
+ * Resolves STUN and optional TURN servers dynamically.
+ * STUN provides NAT mapping; TURN fallback is used if TURN credentials
+ * are configured via environment variables (e.g. NEXT_PUBLIC_TURN_URL).
+ */
+export function getIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    { urls: ["stun:stun2.l.google.com:19302", "stun:stun3.l.google.com:19302"] },
+    { urls: ["stun:stun.cloudflare.com:3478"] },
+    { urls: ["stun:openrelay.metered.ca:80"] },
+  ];
+
+  if (
+    typeof process !== "undefined" &&
+    process.env.NEXT_PUBLIC_TURN_URL &&
+    process.env.NEXT_PUBLIC_TURN_USERNAME &&
+    process.env.NEXT_PUBLIC_TURN_CREDENTIAL
+  ) {
+    servers.push({
+      urls: process.env.NEXT_PUBLIC_TURN_URL.split(",").map((u) => u.trim()),
+      username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+      credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+    });
+  }
+
+  return servers;
+}
 
 export const RTC_ICE_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
-  ],
-  iceCandidatePoolSize: 10,
+  iceServers: getIceServers(),
+  iceCandidatePoolSize: 2,
 };
+
 
 /**
  * Creates a new call record in Firebase Realtime Database
@@ -234,3 +258,39 @@ export async function purgeCallData(callId: string, receiverId?: string): Promis
     console.warn("Failed to purge call data:", err);
   }
 }
+
+/**
+ * Synchronizes camera on/off state to Firebase call record so remote peer
+ * can render the avatar fallback without tearing down WebRTC
+ */
+export async function updateCallCameraStatus(
+  callId: string,
+  role: CallRole,
+  isCameraOff: boolean
+): Promise<void> {
+  try {
+    const callRef = ref(rtdb, `calls/${callId}`);
+    const key = role === "caller" ? "callerCameraOff" : "receiverCameraOff";
+    await update(callRef, { [key]: isCameraOff });
+  } catch (err) {
+    console.warn("Failed to update call camera status:", err);
+  }
+}
+
+/**
+ * Synchronizes mute status to Firebase call record
+ */
+export async function updateCallMuteStatus(
+  callId: string,
+  role: CallRole,
+  isMuted: boolean
+): Promise<void> {
+  try {
+    const callRef = ref(rtdb, `calls/${callId}`);
+    const key = role === "caller" ? "callerMuted" : "receiverMuted";
+    await update(callRef, { [key]: isMuted });
+  } catch (err) {
+    console.warn("Failed to update call mute status:", err);
+  }
+}
+

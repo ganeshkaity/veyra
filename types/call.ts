@@ -1,3 +1,5 @@
+export type CallType = "voice" | "video";
+
 export type CallState =
   | "idle"
   | "calling"
@@ -27,6 +29,7 @@ export interface IceCandidatePayload {
 export interface CallData {
   callId: string;
   conversationId?: string;
+  callType: CallType;
   callerId: string;
   callerName: string;
   callerAvatar?: string;
@@ -36,6 +39,10 @@ export interface CallData {
   status: CallState;
   offer?: SdpPayload;
   answer?: SdpPayload;
+  callerCameraOff?: boolean;
+  receiverCameraOff?: boolean;
+  callerMuted?: boolean;
+  receiverMuted?: boolean;
   createdAt: number;
   startedAt?: number;
   endedAt?: number;
@@ -45,6 +52,7 @@ export interface CallData {
 export interface IncomingCallNotification {
   callId: string;
   conversationId?: string;
+  callType: CallType;
   callerId: string;
   callerName: string;
   callerAvatar?: string;
@@ -52,20 +60,36 @@ export interface IncomingCallNotification {
 }
 
 export interface CallContextType {
+  callType: CallType;
   callState: CallState;
   currentCall: CallData | null;
   incomingCall: IncomingCallNotification | null;
   isMuted: boolean;
+  isCameraOff: boolean;
+  isRemoteCameraOff: boolean;
+  isSpeakerOn: boolean;
+  isSpeakerSupported: boolean;
+  hasMultipleCameras: boolean;
+  currentFacingMode: "user" | "environment";
   duration: number;
   formattedDuration: string;
-  startCall: (targetUser: {
-    uid: string;
-    displayName: string;
-    avatarUrl?: string;
-    conversationId?: string;
-  }) => Promise<void>;
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  startCall: (
+    targetUser: {
+      uid: string;
+      displayName: string;
+      avatarUrl?: string;
+      conversationId?: string;
+    },
+    callType?: CallType
+  ) => Promise<void>;
   acceptCall: () => Promise<void>;
   declineCall: () => Promise<void>;
   endCall: () => Promise<void>;
   toggleMute: () => void;
+  toggleCamera: () => Promise<void>;
+  switchCamera: () => Promise<void>;
+  toggleSpeaker: () => Promise<void>;
 }
+

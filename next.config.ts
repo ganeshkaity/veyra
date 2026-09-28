@@ -46,7 +46,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  allowedDevOrigins: ["10.186.234.222", "veyra-app.vercel.app"],
+  allowedDevOrigins: ["10.19.145.222"],
   devIndicators: false,
   async rewrites() {
     return [
@@ -55,6 +55,7 @@ const nextConfig: NextConfig = {
         destination: "/chat",
       },
     ];
+
   },
 };
 
