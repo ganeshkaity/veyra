@@ -289,14 +289,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
             <Icon name="search" size="sm" />
           </button>
 
-          {/* Info Button */}
-          <button
-            onClick={handleOpenInfoDrawer}
-            className="p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Channel Info"
-          >
-            <Icon name="info" size="sm" />
-          </button>
+
         </div>
       </div>
 
