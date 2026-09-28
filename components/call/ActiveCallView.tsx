@@ -1,7 +1,6 @@
-"use client";
-
 import React, { useState } from "react";
 import Image from "next/image";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { useCall } from "@/components/providers/CallProvider";
 import { Icon } from "@/components/ui/Icon";
 
@@ -14,6 +13,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   remoteVideoRef,
   localVideoRef,
 }) => {
+  const { user } = useAuth();
   const {
     callType,
     callState,
@@ -27,11 +27,14 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     formattedDuration,
     localStream,
     remoteStream,
+    videoRequest,
+    isVideoRequestPending,
     endCall,
     toggleMute,
     toggleCamera,
     switchCamera,
     toggleSpeaker,
+    respondVideoSwitch,
   } = useCall();
 
   const [pipPosition, setPipPosition] = useState<"bottom-right" | "top-right" | "bottom-left">("bottom-right");
@@ -39,15 +42,20 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   const isVideo = callType === "video";
   const isConnected = callState === "connected";
 
-  // Target contact info
-  const targetName =
-    currentCall?.callerName && currentCall.callerName !== "Caller"
-      ? currentCall.callerName === currentCall.receiverName
-        ? currentCall.receiverName
-        : currentCall.receiverName
-      : currentCall?.receiverName || "Veyra Contact";
+  // Accurately determine who the remote party is (caller vs receiver)
+  const isCaller = currentCall?.callerId === user?.uid;
 
-  const resolvedAvatar = currentCall?.receiverAvatar || currentCall?.callerAvatar;
+  const targetName = isCaller
+    ? currentCall?.receiverName || "Contact"
+    : currentCall?.callerName || "Caller";
+
+  const resolvedAvatar = isCaller
+    ? currentCall?.receiverAvatar
+    : currentCall?.callerAvatar;
+
+  const myAvatar = isCaller
+    ? currentCall?.callerAvatar
+    : currentCall?.receiverAvatar;
 
   const getInitials = (n: string) => {
     if (!n) return "?";
@@ -57,6 +65,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     }
     return n.slice(0, 2).toUpperCase();
   };
+
 
   // Status subtitle
   let statusText = "";
@@ -195,11 +204,18 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
                   className="w-full h-full object-cover -scale-x-100"
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-800">
-                  <Icon name="videocam_off" size="md" className="text-slate-400 mb-1" />
+                <div className="w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-800 select-none">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/20 mb-1.5 shadow-inner bg-slate-700 flex items-center justify-center">
+                    {myAvatar ? (
+                      <Image src={myAvatar} alt="You" fill sizes="48px" className="object-cover" />
+                    ) : (
+                      <span className="text-xs font-bold text-white">You</span>
+                    )}
+                  </div>
                   <span className="text-[10px] text-slate-300 font-medium">Camera off</span>
                 </div>
               )}
+
 
               {/* Mobile Camera Flip Button on PiP */}
               {hasMultipleCameras && !isCameraOff && (
@@ -439,6 +455,48 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Switch to Video Call Confirmation Dialog (for the receiving party) */}
+      {videoRequest?.status === "pending" && videoRequest.fromUid !== user?.uid && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-sm bg-[#161a23] border border-white/15 rounded-3xl p-6 shadow-2xl text-center flex flex-col items-center animate-in zoom-in-95">
+            <div className="w-14 h-14 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-400 flex items-center justify-center mb-3">
+              <Icon name="videocam" size="lg" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-1.5">
+              Switch to Video Call?
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300/90 mb-6 leading-relaxed">
+              <span className="font-semibold text-white">{targetName}</span> wants to turn on camera and switch this call to video.
+            </p>
+            <div className="w-full flex items-center justify-center gap-3">
+              <button
+                onClick={() => respondVideoSwitch(false)}
+                type="button"
+                className="flex-1 py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 text-xs sm:text-sm font-semibold text-slate-300 transition-all cursor-pointer"
+              >
+                Decline
+              </button>
+              <button
+                onClick={() => respondVideoSwitch(true)}
+                type="button"
+                className="flex-1 py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs sm:text-sm font-semibold text-white transition-all shadow-lg shadow-emerald-500/30 cursor-pointer"
+              >
+                Accept Video
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Banner for Requester */}
+      {isVideoRequestPending && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[130] bg-slate-900/95 border border-white/15 px-4 py-2 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs text-blue-400 font-medium animate-in fade-in slide-in-from-top-2">
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+          <span>Asking {targetName} to switch to video...</span>
+        </div>
+      )}
     </div>
   );
 };
+

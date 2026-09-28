@@ -26,6 +26,13 @@ export interface IceCandidatePayload {
   usernameFragment?: string | null;
 }
 
+export interface VideoCallRequest {
+  fromUid: string;
+  fromName: string;
+  status: "pending" | "accepted" | "rejected";
+  timestamp: number;
+}
+
 export interface CallData {
   callId: string;
   conversationId?: string;
@@ -43,6 +50,7 @@ export interface CallData {
   receiverCameraOff?: boolean;
   callerMuted?: boolean;
   receiverMuted?: boolean;
+  videoRequest?: VideoCallRequest | null;
   createdAt: number;
   startedAt?: number;
   endedAt?: number;
@@ -75,6 +83,8 @@ export interface CallContextType {
   formattedDuration: string;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  videoRequest: VideoCallRequest | null;
+  isVideoRequestPending: boolean;
   startCall: (
     targetUser: {
       uid: string;
@@ -91,5 +101,8 @@ export interface CallContextType {
   toggleCamera: () => Promise<void>;
   switchCamera: () => Promise<void>;
   toggleSpeaker: () => Promise<void>;
+  requestVideoSwitch: () => Promise<void>;
+  respondVideoSwitch: (accept: boolean) => Promise<void>;
 }
+
 

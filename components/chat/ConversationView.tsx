@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+
 import { Conversation, ChatMessage, UserProfile, UserPresence, TypingIndicator, GroupDetails } from "@/types";
 import { subscribeToGroup } from "@/lib/firestore/groupService";
 import { ConversationHeader } from "./ConversationHeader";
@@ -493,7 +494,21 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
     }
   };
 
-  // Keep scroll position stable when older messages are prepended
+  // Helper to reliably scroll the messages container to the bottom
+  const scrollToBottom = useCallback((instant = true) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    container.scrollTop = container.scrollHeight;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: instant ? "auto" : "smooth",
+        block: "end",
+      });
+    }
+  }, []);
+
+  // Keep scroll position stable when older messages are prepended, or scroll to bottom on new messages
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -504,10 +519,40 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
       container.scrollTop += heightDiff;
       prevScrollHeightRef.current = 0;
     } else if (isNearBottomRef.current) {
-      // Auto-scroll to bottom on initial load or when receiving a message at bottom
-      container.scrollTop = container.scrollHeight;
+      // Auto-scroll to bottom immediately
+      scrollToBottom(true);
+
+      // Perform delayed passes to account for images, voice notes, stickers, and layout settling
+      const t1 = setTimeout(() => scrollToBottom(true), 60);
+      const t2 = setTimeout(() => scrollToBottom(true), 180);
+      const t3 = setTimeout(() => scrollToBottom(true), 380);
+
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
     }
-  }, [messages]);
+  }, [messages, scrollToBottom]);
+
+  // Observe height changes of the message list as images, stickers, and fonts finish rendering
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const contentEl = container.firstElementChild as HTMLElement;
+    if (!contentEl || typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      if (isNearBottomRef.current) {
+        scrollToBottom(true);
+      }
+    });
+
+    ro.observe(contentEl);
+    return () => ro.disconnect();
+  }, [scrollToBottom]);
+
 
   // Send regular text message
   const handleSendMessage = async (text: string, replyTo?: ChatMessage) => {
@@ -871,8 +916,9 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto p-4 space-y-1 scroll-smooth"
+            className="flex-1 overflow-y-auto p-4 space-y-1"
           >
+
             <div className="min-h-full flex flex-col justify-start">
             {/* Older messages loading skeleton indicator */}
             {isLoadingOlder && (

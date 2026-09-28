@@ -154,7 +154,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
             className="w-full p-3 rounded-2xl bg-gradient-to-r from-blue-500/10 via-teal-500/10 to-transparent hover:from-blue-500/15 hover:via-teal-500/15 border border-blue-500/20 text-left flex items-center justify-between transition-all group"
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#2563EB] to-[#14B8A6] text-white flex items-center justify-center shadow-sm">
+              <div className="w-9 h-9 rounded-xl bg-[#2563EB] text-white flex items-center justify-center shadow-sm">
                 <Icon name="groups" size="sm" />
               </div>
               <div>
@@ -162,7 +162,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
                   New Group
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Select users, name your group, and chat together
+                  Select users and start group chat
                 </p>
               </div>
             </div>

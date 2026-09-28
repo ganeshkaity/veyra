@@ -16,6 +16,7 @@ import {
   CallState,
   CallType,
   IncomingCallNotification,
+  VideoCallRequest,
 } from "@/types/call";
 import {
   RTC_ICE_CONFIG,
@@ -33,7 +34,11 @@ import {
   registerCallDisconnectCleanup,
   purgeCallData,
   updateCallCameraStatus,
+  sendVideoCallRequest,
+  respondToVideoCallRequest,
+  clearVideoCallRequest,
 } from "@/lib/realtime/callService";
+
 import { callSounds } from "@/lib/webrtc/audioContextHelper";
 import { sendMessage } from "@/lib/firestore/conversationService";
 import { webrtcLogger } from "@/lib/webrtc/webrtcLogger";
@@ -66,6 +71,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [duration, setDuration] = useState<number>(0);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [videoRequest, setVideoRequest] = useState<VideoCallRequest | null>(null);
+  const [isVideoRequestPending, setIsVideoRequestPending] = useState<boolean>(false);
 
   // WebRTC and Media References
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -92,8 +99,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentRoleRef = useRef<CallRole | null>(null);
   const currentCallRef = useRef<CallData | null>(null);
   const callStateRef = useRef<CallState>("idle");
+  const callTypeRef = useRef<CallType>("voice");
   const incomingCallRef = useRef<IncomingCallNotification | null>(null);
   const activeCallIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    callTypeRef.current = callType;
+  }, [callType]);
+
 
   // Sync state to refs for event handlers
   useEffect(() => {
@@ -741,6 +754,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }, 35000);
 
       // 5. Listen for Receiver's Answer and Status updates
+      let hasSetAnswer = false;
+
       callUnsubRef.current = subscribeToCall(callId, async (updatedCall) => {
         if (!updatedCall) return;
 
@@ -748,6 +763,26 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (updatedCall.receiverCameraOff !== undefined) {
           setIsRemoteCameraOff(updatedCall.receiverCameraOff);
+        }
+
+        // Sync Video Call Switch Request
+        if (updatedCall.videoRequest) {
+          setVideoRequest(updatedCall.videoRequest);
+          if (
+            updatedCall.videoRequest.status === "rejected" ||
+            updatedCall.videoRequest.status === "accepted"
+          ) {
+            setIsVideoRequestPending(false);
+          }
+        } else {
+          setVideoRequest(null);
+        }
+
+        // Check if call was upgraded to video
+        if (updatedCall.callType === "video" && callTypeRef.current !== "video") {
+          callTypeRef.current = "video";
+          setCallType("video");
+          upgradeToVideoMedia();
         }
 
         if (updatedCall.status === "ringing" && callStateRef.current === "calling") {
@@ -762,8 +797,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await terminateCallInternal("failed", updatedCall.endReason || "Call failed");
         }
 
-        // Apply Answer once received
-        if (updatedCall.answer && pc.signalingState === "have-local-offer") {
+        // Apply Answer once received (Synchronously guarded against duplicate invocation)
+        if (
+          updatedCall.answer &&
+          !hasSetAnswer &&
+          pc.signalingState === "have-local-offer"
+        ) {
+          hasSetAnswer = true;
           webrtcLogger.log("Answer received from receiver, setting remote description...");
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(updatedCall.answer));
@@ -774,6 +814,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       });
+
 
       // 6. Listen for Receiver's ICE Candidates (with queueing)
       candidatesUnsubRef.current = listenForReceiverCandidates(callId, async (candidateInit) => {
@@ -929,10 +970,31 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsRemoteCameraOff(callData.callerCameraOff);
         }
 
+        // Sync Video Call Switch Request
+        if (callData.videoRequest) {
+          setVideoRequest(callData.videoRequest);
+          if (
+            callData.videoRequest.status === "rejected" ||
+            callData.videoRequest.status === "accepted"
+          ) {
+            setIsVideoRequestPending(false);
+          }
+        } else {
+          setVideoRequest(null);
+        }
+
+        // Check if call was upgraded to video
+        if (callData.callType === "video" && callTypeRef.current !== "video") {
+          callTypeRef.current = "video";
+          setCallType("video");
+          upgradeToVideoMedia();
+        }
+
         if (callData.status === "ended") {
           await terminateCallInternal("ended", "Call ended");
           return;
         }
+
 
         // Set remote offer and create answer
         if (callData.offer && !hasSetOffer && pc.signalingState === "stable") {
@@ -1032,9 +1094,89 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
+   * Upgrades local media stream and peer connection to video
+   */
+  const upgradeToVideoMedia = async (): Promise<void> => {
+    try {
+      webrtcLogger.log("Upgrading ongoing audio call to video call...");
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: currentFacingMode,
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+      });
+      const videoTrack = videoStream.getVideoTracks()[0];
+      if (videoTrack) {
+        if (localStreamRef.current) {
+          localStreamRef.current.addTrack(videoTrack);
+        } else {
+          localStreamRef.current = videoStream;
+          setLocalStream(videoStream);
+        }
+        setIsCameraOff(false);
+
+        const pc = peerConnectionRef.current;
+        if (pc) {
+          const videoSender = pc.getSenders().find((s) => s.track?.kind === "video");
+          if (videoSender) {
+            await videoSender.replaceTrack(videoTrack);
+          } else {
+            pc.addTrack(videoTrack, localStreamRef.current || videoStream);
+          }
+        }
+
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+        }
+        webrtcLogger.log("Upgraded to video media successfully");
+      }
+    } catch (err) {
+      webrtcLogger.warn("Camera permission denied or unavailable on video upgrade:", err);
+      setIsCameraOff(true);
+    }
+  };
+
+  /**
+   * Request to switch an ongoing voice call to a video call
+   */
+  const requestVideoSwitch = async (): Promise<void> => {
+    if (!currentCallRef.current?.callId || !user) return;
+    webrtcLogger.log("Requesting video call switch from peer...");
+    setIsVideoRequestPending(true);
+    await sendVideoCallRequest(
+      currentCallRef.current.callId,
+      user.uid,
+      profile?.displayName || "Contact"
+    );
+  };
+
+  /**
+   * Respond to a video call switch request (accept or decline)
+   */
+  const respondVideoSwitch = async (accept: boolean): Promise<void> => {
+    if (!currentCallRef.current?.callId) return;
+    webrtcLogger.log(`Responding to video switch request: ${accept ? "ACCEPT" : "REJECT"}`);
+    await respondToVideoCallRequest(currentCallRef.current.callId, accept);
+    if (accept) {
+      setCallType("video");
+      callTypeRef.current = "video";
+      await upgradeToVideoMedia();
+    }
+    setVideoRequest(null);
+  };
+
+  /**
    * Toggle local camera on/off without dropping the RTCPeerConnection
    */
   const toggleCamera = async (): Promise<void> => {
+    // If currently in a voice call, initiate request to switch to video
+    if (callTypeRef.current === "voice") {
+      await requestVideoSwitch();
+      return;
+    }
+
     const pc = peerConnectionRef.current;
     const currentStream = localStreamRef.current;
 
@@ -1087,6 +1229,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
   };
+
 
   /**
    * Flip / switch mobile camera between user and environment facing mode
@@ -1216,6 +1359,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         formattedDuration: formatDuration(duration),
         localStream,
         remoteStream,
+        videoRequest,
+        isVideoRequestPending,
         startCall,
         acceptCall,
         declineCall,
@@ -1224,8 +1369,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleCamera,
         switchCamera,
         toggleSpeaker,
+        requestVideoSwitch,
+        respondVideoSwitch,
       }}
     >
+
       {children}
 
       {/* Hidden audio element for WebRTC remote audio stream */}

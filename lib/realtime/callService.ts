@@ -294,3 +294,61 @@ export async function updateCallMuteStatus(
   }
 }
 
+/**
+ * Sends a request to switch an ongoing voice call to a video call
+ */
+export async function sendVideoCallRequest(
+  callId: string,
+  fromUid: string,
+  fromName: string
+): Promise<void> {
+  try {
+    const reqRef = ref(rtdb, `calls/${callId}/videoRequest`);
+    await set(reqRef, {
+      fromUid,
+      fromName,
+      status: "pending",
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.warn("Failed to send video call request:", err);
+  }
+}
+
+/**
+ * Responds to a video call switch request (accepts or rejects)
+ */
+export async function respondToVideoCallRequest(
+  callId: string,
+  accept: boolean
+): Promise<void> {
+  try {
+    const callRef = ref(rtdb, `calls/${callId}`);
+    if (accept) {
+      await update(callRef, {
+        callType: "video",
+        "videoRequest/status": "accepted",
+      });
+    } else {
+      await update(callRef, {
+        "videoRequest/status": "rejected",
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to respond to video call request:", err);
+  }
+}
+
+/**
+ * Clears the video call switch request from Firebase
+ */
+export async function clearVideoCallRequest(callId: string): Promise<void> {
+  try {
+    const reqRef = ref(rtdb, `calls/${callId}/videoRequest`);
+    await remove(reqRef);
+  } catch (err) {
+    console.warn("Failed to clear video call request:", err);
+  }
+}
+
+
