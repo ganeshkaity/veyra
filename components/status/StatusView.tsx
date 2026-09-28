@@ -1,81 +1,47 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { UserProfile, StatusItem, UserStatusGroup } from "@/types";
+import { useRouter } from "next/navigation";
+import { UserProfile, StatusItem, UserStatusGroup, Channel } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { subscribeToActiveStatuses } from "@/lib/firestore/statusService";
+import {
+  subscribeToUserFollowedChannels,
+  subscribeToUserCreatedChannels,
+  subscribeToAllChannels,
+  followChannel,
+  unfollowChannel,
+  seedInitialChannelsIfEmpty,
+  formatFollowerCount,
+} from "@/lib/firestore/channelService";
 import { StatusViewerModal } from "./StatusViewerModal";
 import { CreateTextStatusModal } from "./CreateTextStatusModal";
 import { CreateImageStatusModal } from "./CreateImageStatusModal";
+import { CreateChannelModal } from "@/components/channel/CreateChannelModal";
 
 interface StatusViewProps {
   currentUser: UserProfile;
 }
-
-interface ChannelItem {
-  id: string;
-  name: string;
-  avatar: string;
-  verified: boolean;
-  followers: string;
-  category: string;
-  description: string;
-}
-
-const CHANNELS: ChannelItem[] = [
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    avatar: "https://images.unsplash.com/photo-1614680376593-902f749f7ffc?w=120&auto=format&fit=crop&q=80",
-    verified: true,
-    followers: "152M followers",
-    category: "News & Media",
-    description: "The official WhatsApp Channel. Stay up to date with new features and tips.",
-  },
-  {
-    id: "realmadrid",
-    name: "Real Madrid C.F.",
-    avatar: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=120&auto=format&fit=crop&q=80",
-    verified: true,
-    followers: "54.8M followers",
-    category: "Sports team",
-    description: "Welcome to the official Real Madrid Channel! #HalaMadrid",
-  },
-  {
-    id: "tech_radar",
-    name: "Tech Radar",
-    avatar: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=120&auto=format&fit=crop&q=80",
-    verified: true,
-    followers: "12.3M followers",
-    category: "Tech & Gadgets",
-    description: "Daily technology news, phone releases, and AI breakthroughs.",
-  },
-  {
-    id: "natgeo",
-    name: "National Geographic",
-    avatar: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120&auto=format&fit=crop&q=80",
-    verified: true,
-    followers: "28.1M followers",
-    category: "Nature & Wildlife",
-    description: "Inspiring people to care about the planet since 1888.",
-  },
-];
 
 export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
   const [myStatuses, setMyStatuses] = useState<StatusItem[]>([]);
   const [otherGroups, setOtherGroups] = useState<UserStatusGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const router = useRouter();
+  const [followedChannels, setFollowedChannels] = useState<Channel[]>([]);
+  const [myChannels, setMyChannels] = useState<Channel[]>([]);
+  const [recommendedChannels, setRecommendedChannels] = useState<Channel[]>([]);
+  const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+
   // Modals state
   const [isTextModalOpen, setIsTextModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isVideoComingSoonOpen, setIsVideoComingSoonOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
-  const [isExploreChannelsOpen, setIsExploreChannelsOpen] = useState(false);
-  const [followedChannelIds, setFollowedChannelIds] = useState<Set<string>>(new Set());
 
   // Active status story player state
   const [viewingStatuses, setViewingStatuses] = useState<StatusItem[] | null>(null);
@@ -213,13 +179,52 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
     return () => unsubscribe();
   }, [currentUser.uid]);
 
-  const toggleFollowChannel = (channelId: string) => {
-    setFollowedChannelIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(channelId)) next.delete(channelId);
-      else next.add(channelId);
-      return next;
+  // Seed default channels if empty
+  useEffect(() => {
+    seedInitialChannelsIfEmpty();
+  }, []);
+
+  // Realtime subscription to user's followed channels
+  useEffect(() => {
+    const unsub = subscribeToUserFollowedChannels(currentUser.uid, (list) => {
+      setFollowedChannels(list);
     });
+    return () => unsub();
+  }, [currentUser.uid]);
+
+  // Realtime subscription to user's created channels
+  useEffect(() => {
+    const unsub = subscribeToUserCreatedChannels(currentUser.uid, (list) => {
+      setMyChannels(list);
+    });
+    return () => unsub();
+  }, [currentUser.uid]);
+
+  // Realtime subscription to recommended channels
+  useEffect(() => {
+    const unsub = subscribeToAllChannels((all) => {
+      const recs = all
+        .filter((c) => !c.followers?.includes(currentUser.uid) && c.createdBy !== currentUser.uid)
+        .slice(0, 8);
+      setRecommendedChannels(recs);
+    }, 25);
+    return () => unsub();
+  }, [currentUser.uid]);
+
+  const handleToggleFollow = async (e: React.MouseEvent, channel: Channel) => {
+    e.stopPropagation();
+    const isFollowing = channel.followers?.includes(currentUser.uid) || followedChannels.some((c) => c.id === channel.id);
+    try {
+      if (isFollowing) {
+        setFollowedChannels((prev) => prev.filter((c) => c.id !== channel.id));
+        await unfollowChannel(channel.id, currentUser.uid);
+      } else {
+        setFollowedChannels((prev) => [...prev, channel]);
+        await followChannel(channel.id, currentUser);
+      }
+    } catch (err) {
+      console.error("Toggle follow error:", err);
+    }
   };
 
   return (
@@ -370,70 +375,237 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
         </div>
 
         {/* ======================================================== */}
-        {/* CHANNELS SECTION (Image 1 style with Explore button) */}
+        {/* CHANNELS SECTION (Database Powered with Explore & My Channels) */}
         {/* ======================================================== */}
-        <div className="space-y-4 pt-2">
+        <div className="space-y-6 pt-2">
+          {/* Header */}
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Channels
-            </h2>
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                Channels
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Stay updated on topics you care about.
+              </p>
+            </div>
             <button
               type="button"
-              onClick={() => setIsExploreChannelsOpen(true)}
-              className="px-5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100 transition-colors active:scale-95 shadow-xs"
+              onClick={() => router.push("/explore")}
+              className="px-5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100 transition-colors active:scale-95 shadow-xs flex items-center gap-1.5"
             >
-              Explore
+              <span>Explore</span>
+              <Icon name="chevron_right" size="xs" />
             </button>
           </div>
 
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Stay updated on topics you care about. Find channels to follow below.
-          </p>
-
-          {/* Channels List Cards */}
-          <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden shadow-xs">
-            {CHANNELS.map((ch) => {
-              const isFollowed = followedChannelIds.has(ch.id);
-              return (
+          {/* User Followed Channels (if any) */}
+          {followedChannels.length > 0 ? (
+            <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden shadow-xs">
+              {followedChannels.map((ch) => (
                 <div
                   key={ch.id}
-                  className="flex items-center justify-between p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                  onClick={() => router.push(`/channel?channel-id=${ch.id}`)}
+                  className="flex items-center justify-between p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none group"
                 >
                   <div className="flex items-center gap-3.5 min-w-0 pr-3">
-                    <img
-                      src={ch.avatar}
-                      alt={ch.name}
-                      className="w-12 h-12 rounded-full object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700"
-                    />
+                    <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      {ch.avatarUrl || ch.avatar ? (
+                        <img
+                          src={ch.avatarUrl || ch.avatar}
+                          alt={ch.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-tr from-blue-500 to-teal-400 flex items-center justify-center text-white font-bold text-lg uppercase">
+                          {ch.name.charAt(0) || "C"}
+                        </div>
+                      )}
+                    </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                           {ch.name}
                         </h4>
                         {ch.verified && (
-                          <span className="text-[#2563EB] text-xs">✓</span>
+                          <span className="w-3.5 h-3.5 rounded-full bg-[#2563EB] text-white text-[9px] font-black flex items-center justify-center flex-shrink-0">
+                            ✓
+                          </span>
                         )}
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        {ch.followers} • {ch.description}
+                        {formatFollowerCount(ch.followerCount)} {ch.description ? `• ${ch.description}` : ""}
                       </p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => toggleFollowChannel(ch.id)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all flex-shrink-0 active:scale-95 ${
-                      isFollowed
-                        ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                        : "bg-[#2563EB] text-white hover:bg-blue-700 shadow-xs"
-                    }`}
+                    onClick={(e) => handleToggleFollow(e, ch)}
+                    className="px-4 py-1.5 rounded-full text-xs font-bold transition-all flex-shrink-0 active:scale-95 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                   >
-                    {isFollowed ? "Following" : "Follow"}
+                    Following
                   </button>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          ) : (
+            /* Recommendations if user has not joined any channels (5-8 recommendations) */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Recommended Channels
+                </span>
+                <button
+                  onClick={() => router.push("/explore")}
+                  className="text-xs font-semibold text-[#2563EB] dark:text-[#14B8A6] hover:underline"
+                >
+                  See all
+                </button>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden shadow-xs">
+                {recommendedChannels.map((ch) => (
+                  <div
+                    key={ch.id}
+                    onClick={() => router.push(`/channel?channel-id=${ch.id}`)}
+                    className="flex items-center justify-between p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0 pr-3">
+                      <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        {ch.avatarUrl || ch.avatar ? (
+                          <img
+                            src={ch.avatarUrl || ch.avatar}
+                            alt={ch.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-tr from-blue-500 to-teal-400 flex items-center justify-center text-white font-bold text-lg uppercase">
+                            {ch.name.charAt(0) || "C"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {ch.name}
+                          </h4>
+                          {ch.verified && (
+                            <span className="w-3.5 h-3.5 rounded-full bg-[#2563EB] text-white text-[9px] font-black flex items-center justify-center flex-shrink-0">
+                              ✓
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                          {formatFollowerCount(ch.followerCount)} {ch.description ? `• ${ch.description}` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleFollow(e, ch)}
+                      className="px-4 py-1.5 rounded-full text-xs font-bold transition-all flex-shrink-0 active:scale-95 bg-[#2563EB] text-white hover:bg-blue-700 shadow-xs"
+                    >
+                      Follow
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* MY CHANNELS SUBSECTION (User's created channels) */}
+          {/* ======================================================== */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  My Channels
+                </span>
+                {myChannels.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    {myChannels.length}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateChannelOpen(true)}
+                className="text-xs font-bold text-[#2563EB] dark:text-[#14B8A6] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Icon name="add" size="xs" />
+                <span>Create Channel</span>
+              </button>
+            </div>
+
+            {myChannels.length > 0 ? (
+              <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0F172A] divide-y divide-slate-100 dark:divide-slate-800/80 overflow-hidden shadow-xs">
+                {myChannels.map((ch) => (
+                  <div
+                    key={ch.id}
+                    onClick={() => router.push(`/channel?channel-id=${ch.id}`)}
+                    className="flex items-center justify-between p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0 pr-3">
+                      <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        {ch.avatarUrl || ch.avatar ? (
+                          <img
+                            src={ch.avatarUrl || ch.avatar}
+                            alt={ch.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white font-bold text-lg uppercase">
+                            {ch.name.charAt(0) || "C"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {ch.name}
+                          </h4>
+                          <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">
+                            Creator
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                          {formatFollowerCount(ch.followerCount)} {ch.description ? `• ${ch.description}` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-xs font-semibold text-[#2563EB] group-hover:translate-x-0.5 transition-transform">
+                      <span>Open</span>
+                      <Icon name="chevron_right" size="xs" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                onClick={() => setIsCreateChannelOpen(true)}
+                className="p-5 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850/60 transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                    <Icon name="campaign" size="sm" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Create your own channel
+                    </h5>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Share updates and news directly with unlimited followers
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-[#2563EB] hover:underline flex-shrink-0">
+                  + Create
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -474,58 +646,15 @@ export const StatusView: React.FC<StatusViewProps> = ({ currentUser }) => {
         currentUser={currentUser}
       />
 
-      {/* Explore Channels Modal */}
-      <Modal
-        isOpen={isExploreChannelsOpen}
-        onClose={() => setIsExploreChannelsOpen(false)}
-        title="Explore Channels"
-        maxWidth="md"
-      >
-        <div className="space-y-3 p-1">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Browse verified channels from news, sports, entertainment, and organizations.
-          </p>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-            {CHANNELS.map((ch) => {
-              const isFollowed = followedChannelIds.has(ch.id);
-              return (
-                <div key={ch.id} className="pt-3 pb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={ch.avatar}
-                      alt={ch.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                    <div>
-                      <div className="flex items-center gap-1 font-bold text-sm text-slate-800 dark:text-slate-200">
-                        <span>{ch.name}</span>
-                        {ch.verified && <span className="text-[#2563EB]">✓</span>}
-                      </div>
-                      <p className="text-xs text-slate-400">{ch.followers}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleFollowChannel(ch.id)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                      isFollowed
-                        ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                        : "bg-[#2563EB] text-white hover:bg-blue-700"
-                    }`}
-                  >
-                    {isFollowed ? "Following" : "Follow"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
-            <Button size="sm" onClick={() => setIsExploreChannelsOpen(false)}>
-              Done
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Create Channel Modal */}
+      <CreateChannelModal
+        isOpen={isCreateChannelOpen}
+        onClose={() => setIsCreateChannelOpen(false)}
+        onChannelCreated={(newChan) => {
+          setIsCreateChannelOpen(false);
+          router.push(`/channel?channel-id=${newChan.id}`);
+        }}
+      />
 
       {/* Video Status Coming Soon Modal */}
       <Modal

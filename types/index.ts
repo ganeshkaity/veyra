@@ -97,14 +97,35 @@ export interface ConversationParticipant {
   avatarUrl: string;
 }
 
+export interface Channel {
+  id: string;
+  name: string;
+  avatar?: string;
+  avatarUrl?: string;
+  description?: string;
+  category?: string;
+  verified?: boolean;
+  createdBy: string;
+  createdByName?: string;
+  createdAt: number;
+  updatedAt: number;
+  followers?: string[];
+  followerCount?: number;
+  conversationId?: string;
+}
+
 export interface Conversation {
   id: string;
-  type: 'direct' | 'group' | 'ai';
+  type: 'direct' | 'group' | 'ai' | 'channel';
   participantIds: string[];
   participants: Record<string, ConversationParticipant>;
   groupId?: string;
   groupName?: string;
   groupAvatar?: string;
+  channelId?: string;
+  channelName?: string;
+  channelAvatar?: string;
+  channelCreatedBy?: string;
   lastMessage?: {
     text: string;
     senderId: string;

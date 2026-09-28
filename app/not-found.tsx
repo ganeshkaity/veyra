@@ -172,7 +172,7 @@ export default function NotFound() {
             {[
               { label: "Chats", path: "/chat", icon: "forum" },
               { label: "Settings", path: "/setting", icon: "settings" },
-              { label: "Status", path: "/status", icon: "donut_large" },
+              { label: "Updates", path: "/status", icon: "donut_large" },
               { label: "Groups", path: "/groups", icon: "groups" },
               { label: "Profile", path: "/profile", icon: "person" },
             ].map((item) => (
