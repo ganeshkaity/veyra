@@ -24,6 +24,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
     isSpeakerOn,
     isSpeakerSupported,
     hasMultipleCameras,
+    currentFacingMode,
     formattedDuration,
     localStream,
     remoteStream,
@@ -410,7 +411,7 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
                 playsInline
                 webkit-playsinline="true"
                 muted
-                className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-300 pointer-events-none ${
+                className={`w-full h-full object-cover ${currentFacingMode === "user" ? "-scale-x-100" : ""} transition-opacity duration-300 pointer-events-none ${
                   hasLocalVideo ? "opacity-100" : "opacity-0"
                 }`}
               />

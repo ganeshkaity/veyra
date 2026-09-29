@@ -1,6 +1,6 @@
 {
   "packageId": "com.veyra.chat",
-  "host": "localhost:3000",
+  "host": "veyrachatting.vercel.app",
   "name": "Veyra",
   "launcherName": "Veyra",
   "themeColor": "#2563EB",
@@ -11,8 +11,8 @@
   "backgroundColor": "#0B1120",
   "enableNotifications": true,
   "startUrl": "/chat",
-  "iconUrl": "http://localhost:3000/icons/icon-512x512.png",
-  "maskableIconUrl": "http://localhost:3000/icons/maskable-icon-512x512.png",
+  "iconUrl": "https://veyrachatting.vercel.app/icons/icon-512x512.png",
+  "maskableIconUrl": "https://veyrachatting.vercel.app/icons/maskable-icon-512x512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./android-keystore.jks",
@@ -82,18 +82,18 @@
     {
       "name": "Chats",
       "shortName": "Chats",
-      "url": "http://localhost:3000/chat",
-      "chosenIconUrl": "http://localhost:3000/icons/icon-192x192.png"
+      "url": "https://veyrachatting.vercel.app/chat",
+      "chosenIconUrl": "https://veyrachatting.vercel.app/icons/icon-192x192.png"
     },
     {
       "name": "Status",
       "shortName": "Status",
-      "url": "http://localhost:3000/status",
-      "chosenIconUrl": "http://localhost:3000/icons/icon-192x192.png"
+      "url": "https://veyrachatting.vercel.app/status",
+      "chosenIconUrl": "https://veyrachatting.vercel.app/icons/icon-192x192.png"
     }
   ],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "http://localhost:3000/manifest.json",
+  "webManifestUrl": "https://veyrachatting.vercel.app/manifest.json",
   "fallbackType": "customtabs",
   "features": {
     "locationDelegation": {

@@ -1387,7 +1387,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
   /**
-   * Flip / switch mobile camera between user and environment facing mode
+   * Flip / switch mobile camera between user and environment facing mode.
+   * Uses ideal facingMode (not exact) to avoid OverconstrainedError on Android.
+   * Falls back to device enumeration for devices that ignore facingMode entirely.
    */
   const switchCamera = async (): Promise<void> => {
     const pc = peerConnectionRef.current;
@@ -1397,37 +1399,80 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nextMode = currentFacingMode === "user" ? "environment" : "user";
     webrtcLogger.log(`Switching camera to: ${nextMode}`);
 
+    const applyNewTrack = async (newTrack: MediaStreamTrack) => {
+      const oldTrack = currentStream.getVideoTracks()[0];
+      if (oldTrack) {
+        currentStream.removeTrack(oldTrack);
+        oldTrack.stop();
+      }
+      currentStream.addTrack(newTrack);
+      setCurrentFacingMode(nextMode);
+
+      if (pc) {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(newTrack);
+        }
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = currentStream;
+      }
+      webrtcLogger.log(`Camera switched to ${nextMode} successfully`);
+    };
+
+    // Strategy 1: ideal facingMode (works on most browsers, avoids OverconstrainedError)
     try {
       const newMedia = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextMode },
+        video: { facingMode: { ideal: nextMode } },
       });
       const newTrack = newMedia.getVideoTracks()[0];
-
       if (newTrack) {
-        const oldTrack = currentStream.getVideoTracks()[0];
-        if (oldTrack) {
-          currentStream.removeTrack(oldTrack);
-          oldTrack.stop();
-        }
-
-        currentStream.addTrack(newTrack);
-        setCurrentFacingMode(nextMode);
-
-        if (pc) {
-          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-          if (sender) {
-            await sender.replaceTrack(newTrack);
-          }
-        }
-
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = currentStream;
-        }
-
-        webrtcLogger.log(`Camera switched to ${nextMode} successfully`);
+        await applyNewTrack(newTrack);
+        return;
       }
     } catch (err) {
-      webrtcLogger.error("Failed to switch camera:", err);
+      webrtcLogger.warn("Ideal facingMode switch failed, trying deviceId fallback:", err);
+    }
+
+    // Strategy 2: enumerate devices and pick a different camera by deviceId
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === "videoinput");
+
+      if (videoInputs.length < 2) {
+        webrtcLogger.warn("Only one camera found, cannot switch.");
+        return;
+      }
+
+      const currentTrack = currentStream.getVideoTracks()[0];
+      const currentDeviceId = currentTrack?.getSettings()?.deviceId;
+
+      // Prefer a device whose label hints at the desired facing mode
+      const frontKeywords = ["front", "selfie", "user", "facetime"];
+      const backKeywords = ["back", "rear", "environment", "main"];
+      const keywords = nextMode === "user" ? frontKeywords : backKeywords;
+
+      let targetDevice =
+        videoInputs.find((d) =>
+          keywords.some((k) => d.label.toLowerCase().includes(k))
+        ) ??
+        videoInputs.find((d) => d.deviceId !== currentDeviceId);
+
+      if (!targetDevice) {
+        webrtcLogger.warn("Could not find a target device to switch to.");
+        return;
+      }
+
+      const newMedia = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: targetDevice.deviceId } },
+      });
+      const newTrack = newMedia.getVideoTracks()[0];
+      if (newTrack) {
+        await applyNewTrack(newTrack);
+      }
+    } catch (err) {
+      webrtcLogger.error("DeviceId fallback camera switch also failed:", err);
     }
   };
 
